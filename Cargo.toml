@@ -1,0 +1,7 @@
+[package]
+name = "plane-split"
+version = "0.1.0"
+authors = ["kvark <kvark@mozilla.com>"]
+
+[dependencies]
+euclid = "0.11"
