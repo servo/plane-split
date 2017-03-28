@@ -12,15 +12,38 @@ pub use self::naive::NaiveSplitter;
 
 pub type Index = u32;
 
+/// A generic line.
+#[derive(Debug)]
 pub struct Line<T, U> {
+    /// Arbitrary point on the line.
     pub origin: TypedPoint3D<T, U>,
+    /// Normalized direction of the line.
     pub dir: TypedPoint3D<T, U>,
 }
 
+impl<
+    T: Copy + Zero + PartialEq + ApproxEq<T> + ops::Add<T, Output=T> + ops::Sub<T, Output=T> + ops::Mul<T, Output=T>,
+    U,
+> PartialEq for Line<T, U> {
+    fn eq(&self, other: &Self) -> bool {
+        let diff = self.origin - other.origin;
+        let zero = TypedPoint3D::new(T::zero(), T::zero(), T::zero());
+        self.dir.cross(other.dir).approx_eq(&zero) &&
+        self.dir.cross(diff).approx_eq(&zero)
+    }
+}
+
+/// A convex flat polygon with 4 points, defined by equation:
+/// dot(v, normal) + offset = 0
 pub struct Polygon<T, U> {
+    /// Points making the polygon.
     pub points: [TypedPoint3D<T, U>; 4],
+    /// Normalized vector perpendicular to the polygon plane.
     pub normal: TypedPoint3D<T, U>,
+    /// Constant offset from the normal plane.
     pub offset: T,
+    /// An original index of the polygon. Used to track the
+    /// source when a polygon gets split.
     pub index: Index,
 }
 
@@ -38,7 +61,9 @@ impl<T: Clone, U> Clone for Polygon<T, U> {
     }
 }
 
+/// The projection of a `Polygon` on a line.
 pub struct LineProjection<T> {
+    /// Projected value of each point in the polygon.
     pub markers: [T; 4],
 }
 
@@ -61,7 +86,7 @@ impl<T: Copy + PartialOrd + ops::Sub<T, Output=T> + ops::Add<T, Output=T>> LineP
         if b > c {
             mem::swap(&mut b, &mut c);
         }
-        assert!(a <= b && b <= c && c <= d);
+        debug_assert!(a <= b && b <= c && c <= d);
         (a, d)
     }
 
@@ -85,10 +110,25 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
         ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
         ops::Mul<T, Output=T> + ops::Div<T, Output=T>,
      U> Polygon<T, U> {
+
+    /// Return the signed distance from this polygon to a point.
+    /// The distance is negative if the point is on the other side of the polygon
+    /// from the direction of the normal.
     pub fn signed_distance_to(&self, point: &TypedPoint3D<T, U>) -> T {
         point.dot(self.normal) + self.offset
     }
 
+    /// Check if all the points are indeed placed on the plane defined by
+    /// the normal and offset.
+    pub fn is_valid(&self) -> bool {
+        self.points.iter()
+                   .find(|p| !self.signed_distance_to(p).approx_eq(&T::zero()))
+                   .is_none()
+    }
+
+    /// Check if a convex shape defined by a set of points is completely
+    /// outside of this polygon. Merely touching the surface is not
+    /// considered an intersection.
     pub fn are_outside(&self, points: &[TypedPoint3D<T, U>]) -> bool {
         let d0 = self.signed_distance_to(&points[0]);
         points[1..].iter()
@@ -96,13 +136,15 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
                    .is_none()
     }
 
+    /// Project this polygon onto a 3D vector, returning a line projection.
+    /// Note: we can think of it as a projection to a ray placed at the origin.
     pub fn project_on(&self, vector: &TypedPoint3D<T, U>) -> LineProjection<T> {
         LineProjection {
             markers: [
                 vector.dot(self.points[0]),
                 vector.dot(self.points[1]),
                 vector.dot(self.points[2]),
-                vector.dot(self.points[3])
+                vector.dot(self.points[3]),
             ],
         }
     }
@@ -110,6 +152,7 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
     pub fn intersect(&self, other: &Polygon<T, U>) -> Option<Line<T, U>> {
         if self.are_outside(&other.points) || other.are_outside(&self.points) {
             // one is completely outside the other
+            println!("outside");
             return None
         }
         let cross_dir = self.normal.cross(other.normal);
@@ -123,8 +166,15 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
             // projections on the line don't intersect
             return None
         }
-        let center = scale(self.points[1] - self.points[0], other.offset) +
-                     scale(other.points[1] - other.points[0], self.offset);
+        // compute any point on the intersection between planes
+        // (n1, v) + d1 = 0
+        // (n2, v) + d2 = 0
+        // v = a*n1/w + b*n2/w; w = (n1, n2)
+        // v = (d2*w - d1) / (1 - w*w) * n1 - (d2 - d1*w) / (1 - w*w) * n2
+        let w = self.normal.dot(other.normal);
+        let factor = T::one() / (T::one() - w * w);
+        let center = scale(self.normal, (other.offset * w - self.offset) * factor) -
+                     scale(other.normal, (other.offset - self.offset * w) * factor);
         Some(Line {
             origin: center,
             dir: cross_dir,
@@ -134,10 +184,10 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
     pub fn split(&mut self, line: &Line<T, U>) -> (Polygon<T, U>, Option<Polygon<T, U>>) {
         let mut cuts = [None; 4];
         for ((&b, &a), cut) in self.points.iter()
-                                        .cycle()
-                                        .skip(1)
-                                        .zip(self.points.iter())
-                                        .zip(cuts.iter_mut()) {
+                                          .cycle()
+                                          .skip(1)
+                                          .zip(self.points.iter())
+                                          .zip(cuts.iter_mut()) {
             //a + (b-a) * t = line.origin + r * line.dir, where (t, r) = unknowns
             //a x line.dir + t * (b-a) x line.dir = line.origin x line.dir
             // t = (line.origin - a) x line.dir  / (b-a) x line.dir
@@ -202,4 +252,106 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
 
 pub trait Splitter<T, U> {
     fn solve(&mut self, polygons: &[Polygon<T, U>]) -> &[Polygon<T, U>];
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn line_proj_bounds() {
+        assert_eq!((-5i8, 4), LineProjection { markers: [-5i8, 1, 4, 2] }.get_bounds());
+        assert_eq!((1f32, 4.0), LineProjection { markers: [4f32, 3.0, 2.0, 1.0] }.get_bounds());
+    }
+
+    #[test]
+    fn are_outside() {
+        let poly: Polygon<f32, ()> = Polygon {
+            points: [
+                TypedPoint3D::new(0.0, 0.0, 1.0),
+                TypedPoint3D::new(1.0, 0.0, 1.0),
+                TypedPoint3D::new(1.0, 1.0, 1.0),
+                TypedPoint3D::new(0.0, 1.0, 1.0),
+            ],
+            normal: TypedPoint3D::new(0.0, 0.0, 1.0),
+            offset: -1.0,
+            index: 0,
+        };
+        assert!(poly.is_valid());
+        assert!(poly.are_outside(&[
+            TypedPoint3D::new(0.0, 0.0, 1.1),
+            TypedPoint3D::new(1.0, 1.0, 2.0),
+        ]));
+        assert!(poly.are_outside(&[
+            TypedPoint3D::new(0.5, 0.5, 1.0),
+        ]));
+        assert!(!poly.are_outside(&[
+            TypedPoint3D::new(0.0, 0.0, 1.0),
+            TypedPoint3D::new(0.0, 0.0, -1.0),
+        ]));
+    }
+
+    #[test]
+    fn intersect() {
+        let poly_a: Polygon<f32, ()> = Polygon {
+            points: [
+                TypedPoint3D::new(0.0, 0.0, 1.0),
+                TypedPoint3D::new(1.0, 0.0, 1.0),
+                TypedPoint3D::new(1.0, 1.0, 1.0),
+                TypedPoint3D::new(0.0, 1.0, 1.0),
+            ],
+            normal: TypedPoint3D::new(0.0, 0.0, 1.0),
+            offset: -1.0,
+            index: 0,
+        };
+        assert!(poly_a.is_valid());
+        let poly_b: Polygon<f32, ()> = Polygon {
+            points: [
+                TypedPoint3D::new(0.5, 0.0, 2.0),
+                TypedPoint3D::new(0.5, 0.0, 0.0),
+                TypedPoint3D::new(0.5, 1.0, 2.0),
+                TypedPoint3D::new(0.5, 1.0, 0.0),
+            ],
+            normal: TypedPoint3D::new(1.0, 0.0, 0.0),
+            offset: -0.5,
+            index: 0,
+        };
+        assert!(poly_b.is_valid());
+
+        let intersection = poly_a.intersect(&poly_b).unwrap();
+        println!("{:?}", intersection);
+        // confirm the origin is on both planes
+        assert!(poly_a.signed_distance_to(&intersection.origin).approx_eq(&0.0));
+        assert!(poly_b.signed_distance_to(&intersection.origin).approx_eq(&0.0));
+        // confirm the direction is coplanar to both planes
+        assert!(poly_a.normal.dot(intersection.dir).approx_eq(&0.0));
+        assert!(poly_b.normal.dot(intersection.dir).approx_eq(&0.0));
+
+        let poly_c: Polygon<f32, ()> = Polygon {
+            points: [
+                TypedPoint3D::new(0.0, -1.0, 2.0),
+                TypedPoint3D::new(0.0, -1.0, 0.0),
+                TypedPoint3D::new(0.0, 0.0, 2.0),
+                TypedPoint3D::new(0.0, 0.0, 0.0),
+            ],
+            normal: TypedPoint3D::new(1.0, 0.0, 0.0),
+            offset: 0.0,
+            index: 0,
+        };
+        assert!(poly_c.is_valid());
+        let poly_d: Polygon<f32, ()> = Polygon {
+            points: [
+                TypedPoint3D::new(0.0, 0.0, 0.5),
+                TypedPoint3D::new(1.0, 0.0, 0.5),
+                TypedPoint3D::new(1.0, 1.0, 0.5),
+                TypedPoint3D::new(0.0, 1.0, 0.5),
+            ],
+            normal: TypedPoint3D::new(0.0, 0.0, 1.0),
+            offset: -0.5,
+            index: 0,
+        };
+        assert!(poly_d.is_valid());
+
+        assert_eq!(poly_a.intersect(&poly_c), None);
+        assert_eq!(poly_a.intersect(&poly_d), None);
+    }
 }
