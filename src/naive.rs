@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::ops;
+use std::{fmt, ops};
 use {Polygon, Splitter};
 use euclid::approxeq::ApproxEq;
 use euclid::num::{One, Zero};
@@ -9,7 +9,7 @@ pub struct NaiveSplitter<T, U> {
 }
 
 impl<
-    T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
+    T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
        ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
        ops::Mul<T, Output=T> + ops::Div<T, Output=T>,
     U,
@@ -23,13 +23,17 @@ impl<
         while let Some((mut polygon, start_index)) = heap_todo.pop_front() {
             for (i, existing) in self.result[start_index..].iter_mut().enumerate() {
                 if let Some(line) = polygon.intersect(existing) {
-                    let (res_add, res_add2) = existing.split(&line);
-                    temp.push(res_add);
+                    let (res_add1, res_add2) = existing.split(&line);
+                    if let Some(res) = res_add1 {
+                        temp.push(res);
+                    }
                     if let Some(res) = res_add2 {
                         temp.push(res);
                     }
-                    let (new_todo, new_todo2) = polygon.split(&line);
-                    heap_todo.push_back((new_todo, start_index + i + 1));
+                    let (new_todo1, new_todo2) = polygon.split(&line);
+                    if let Some(todo) = new_todo1 {
+                        heap_todo.push_back((todo, start_index + i + 1));
+                    }
                     if let Some(todo) = new_todo2 {
                         heap_todo.push_back((todo, start_index + i + 1));
                     }

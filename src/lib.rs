@@ -2,7 +2,7 @@ extern crate euclid;
 
 mod naive;
 
-use std::{mem, ops};
+use std::{fmt, mem, ops};
 use euclid::{TypedPoint3D};
 use euclid::approxeq::ApproxEq;
 use euclid::num::{One, Zero};
@@ -22,10 +22,15 @@ pub struct Line<T, U> {
 }
 
 impl<
-    T: Copy + Zero + PartialEq + ApproxEq<T> + ops::Add<T, Output=T> + ops::Sub<T, Output=T> + ops::Mul<T, Output=T>,
+    T: Copy + One + Zero + PartialEq + ApproxEq<T> + ops::Add<T, Output=T> + ops::Sub<T, Output=T> + ops::Mul<T, Output=T>,
     U,
-> PartialEq for Line<T, U> {
-    fn eq(&self, other: &Self) -> bool {
+> Line<T, U> {
+    /// Check if the line has consistent parameters.
+    pub fn is_valid(&self) -> bool {
+        self.dir.dot(self.dir).approx_eq(&T::one())
+    }
+    /// Check if two lines match each other.
+    pub fn matches(&self, other: &Self) -> bool {
         let diff = self.origin - other.origin;
         let zero = TypedPoint3D::new(T::zero(), T::zero(), T::zero());
         self.dir.cross(other.dir).approx_eq(&zero) &&
@@ -35,6 +40,7 @@ impl<
 
 /// A convex flat polygon with 4 points, defined by equation:
 /// dot(v, normal) + offset = 0
+#[derive(Debug, PartialEq)]
 pub struct Polygon<T, U> {
     /// Points making the polygon.
     pub points: [TypedPoint3D<T, U>; 4],
@@ -70,7 +76,8 @@ pub struct LineProjection<T> {
 impl<T: Copy + PartialOrd + ops::Sub<T, Output=T> + ops::Add<T, Output=T>> LineProjection<T> {
     pub fn get_bounds(&self) -> (T, T) {
         let (mut a, mut b, mut c, mut d) = (self.markers[0], self.markers[1], self.markers[2], self.markers[3]);
-        // We could not just use `min/max` since they require `Ord` bound
+        // bitonic sort of 4 elements
+        // we could not just use `min/max` since they require `Ord` bound
         if a > c {
             mem::swap(&mut a, &mut c);
         }
@@ -106,7 +113,7 @@ fn scale<T: Copy + ops::Mul<T, Output=T>, U>(vec: TypedPoint3D<T, U>, factor: T)
     TypedPoint3D::new(vec.x * factor, vec.y * factor, vec.z * factor)
 }
 
-impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
+impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
         ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
         ops::Mul<T, Output=T> + ops::Div<T, Output=T>,
      U> Polygon<T, U> {
@@ -119,11 +126,21 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
     }
 
     /// Check if all the points are indeed placed on the plane defined by
-    /// the normal and offset.
+    /// the normal and offset, and the winding order is consistent.
     pub fn is_valid(&self) -> bool {
-        self.points.iter()
-                   .find(|p| !self.signed_distance_to(p).approx_eq(&T::zero()))
-                   .is_none()
+        let is_planar = self.points.iter()
+                                   .find(|p| !self.signed_distance_to(p).approx_eq(&T::zero()))
+                                   .is_none();
+        let edges = [self.points[1] - self.points[0],
+                     self.points[2] - self.points[1],
+                     self.points[3] - self.points[2],
+                     self.points[0] - self.points[3]];
+        let anchor = edges[3].cross(edges[0]);
+        let is_winding = edges.iter()
+                              .zip(edges[1..].iter())
+                              .find(|&(a, &b)| a.cross(b).dot(anchor) < T::zero())
+                              .is_none();
+        is_planar && is_winding
     }
 
     /// Check if a convex shape defined by a set of points is completely
@@ -134,6 +151,12 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
         points[1..].iter()
                    .find(|p| self.signed_distance_to(p) * d0 <= T::zero())
                    .is_none()
+    }
+
+    /// Check if this polygon contains another one.
+    pub fn contains(&self, other: &Self) -> bool {
+        //TODO: actually check for inside/outside
+        self.normal == other.normal && self.offset == other.offset
     }
 
     /// Project this polygon onto a 3D vector, returning a line projection.
@@ -149,7 +172,7 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
         }
     }
 
-    pub fn intersect(&self, other: &Polygon<T, U>) -> Option<Line<T, U>> {
+    pub fn intersect(&self, other: &Self) -> Option<Line<T, U>> {
         if self.are_outside(&other.points) || other.are_outside(&self.points) {
             // one is completely outside the other
             println!("outside");
@@ -181,24 +204,44 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
         })
     }
 
-    pub fn split(&mut self, line: &Line<T, U>) -> (Polygon<T, U>, Option<Polygon<T, U>>) {
+    pub fn split(&mut self, line: &Line<T, U>) -> (Option<Polygon<T, U>>, Option<Polygon<T, U>>) {
+        // check if the cut is within the polygon plane first
+        if !self.normal.dot(line.dir).approx_eq(&T::zero()) ||
+           !self.signed_distance_to(&line.origin).approx_eq(&T::zero()) {
+            return (None, None)
+        }
+        // compute the intersection points for each edge
         let mut cuts = [None; 4];
         for ((&b, &a), cut) in self.points.iter()
                                           .cycle()
                                           .skip(1)
                                           .zip(self.points.iter())
                                           .zip(cuts.iter_mut()) {
-            //a + (b-a) * t = line.origin + r * line.dir, where (t, r) = unknowns
-            //a x line.dir + t * (b-a) x line.dir = line.origin x line.dir
-            // t = (line.origin - a) x line.dir  / (b-a) x line.dir
-            let c = b - a;
-            let t = line.dir.cross(line.origin - a).x / line.dir.cross(c).x; //TODO
-            if t > T::zero() && t < T::one() {
-                *cut = Some(a + scale(c, t));
+            // intersecting line segment [a, b] with `line`
+            //a + (b-a) * t = r + k * d
+            //(a, d) + t * (b-a, d) - (r, d) = k
+            // a + t * (b-a) = r + t * (b-a, d) * d + (a-r, d) * d
+            // t * ((b-a) - (b-a, d)*d) = (r-a) - (r-a, d) * d
+            let pr = line.origin - a - scale(line.dir, line.dir.dot(line.origin - a));
+            let pb = b - a - scale(line.dir, line.dir.dot(b - a));
+            let denom = pb.dot(pb);
+            if !denom.approx_eq(&T::zero()) {
+                let t = pr.dot(pb) / denom;
+                if t > T::zero() && t < T::one() {
+                    *cut = Some(a + scale(b - a, t));
+                }
             }
         }
-        let first = cuts.iter().position(|c| c.is_some()).unwrap();
-        let second = first + cuts[first+1 ..].iter().position(|c| c.is_some()).unwrap();
+
+        let first = match cuts.iter().position(|c| c.is_some()) {
+            Some(pos) => pos,
+            None => return (None, None),
+        };
+        let second = match cuts[first+1 ..].iter().position(|c| c.is_some()) {
+            Some(pos) => first + 1 + pos,
+            None => return (None, None),
+        };
+        //TODO: can be optimized for when the polygon has a redundant 4th vertex
         let (a, b) = (cuts[first].unwrap(), cuts[second].unwrap());
         match second-first {
             2 => {
@@ -207,10 +250,11 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
                 other_points[(first+3) % 4] = b;
                 self.points[first+1] = a;
                 self.points[first+2] = b;
-                (Polygon {
+                let poly = Polygon {
                     points: other_points,
                     .. self.clone()
-                }, None)
+                };
+                (Some(poly), None)
             }
             3 => {
                 let xpoints = [
@@ -220,13 +264,15 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
                     b];
                 let ypoints = [a, self.points[first+1], b, b];
                 self.points = [self.points[first], a, b, b];
-                (Polygon {
+                let poly1 = Polygon {
                     points: xpoints,
                     .. self.clone()
-                }, Some(Polygon {
+                };
+                let poly2 = Polygon {
                     points: ypoints,
                     .. self.clone()
-                }))
+                };
+                (Some(poly1), Some(poly2))
             }
             1 => {
                 let xpoints = [
@@ -237,13 +283,15 @@ impl<T: Copy + PartialOrd + Zero + One + ApproxEq<T> +
                     ];
                 let ypoints = [self.points[first], a, b, b];
                 self.points = [a, self.points[first+1], b, b];
-                (Polygon {
+                let poly1 = Polygon {
                     points: xpoints,
                     .. self.clone()
-                }, Some(Polygon {
+                };
+                let poly2 = Polygon {
                     points: ypoints,
                     .. self.clone()
-                }))
+                };
+                (Some(poly1), Some(poly2))
             }
             _ => panic!("Unexpected indices {} {}", first, second),
         }
@@ -261,6 +309,46 @@ mod test {
     fn line_proj_bounds() {
         assert_eq!((-5i8, 4), LineProjection { markers: [-5i8, 1, 4, 2] }.get_bounds());
         assert_eq!((1f32, 4.0), LineProjection { markers: [4f32, 3.0, 2.0, 1.0] }.get_bounds());
+    }
+
+    #[test]
+    fn valid() {
+        let poly_a: Polygon<f32, ()> = Polygon {
+            points: [
+                TypedPoint3D::new(0.0, 0.0, 0.0),
+                TypedPoint3D::new(1.0, 1.0, 1.0),
+                TypedPoint3D::new(1.0, 1.0, 0.0),
+                TypedPoint3D::new(0.0, 1.0, 1.0),
+            ],
+            normal: TypedPoint3D::new(0.0, 1.0, 0.0),
+            offset: -1.0,
+            index: 1,
+        };
+        assert!(!poly_a.is_valid()); // points[0] is outside
+        let poly_b: Polygon<f32, ()> = Polygon {
+            points: [
+                TypedPoint3D::new(0.0, 1.0, 0.0),
+                TypedPoint3D::new(1.0, 1.0, 1.0),
+                TypedPoint3D::new(1.0, 1.0, 0.0),
+                TypedPoint3D::new(0.0, 1.0, 1.0),
+            ],
+            normal: TypedPoint3D::new(0.0, 1.0, 0.0),
+            offset: -1.0,
+            index: 1,
+        };
+        assert!(!poly_b.is_valid()); // winding is incorrect
+        let poly_c: Polygon<f32, ()> = Polygon {
+            points: [
+                TypedPoint3D::new(0.0, 0.0, 1.0),
+                TypedPoint3D::new(1.0, 0.0, 1.0),
+                TypedPoint3D::new(1.0, 1.0, 1.0),
+                TypedPoint3D::new(0.0, 1.0, 1.0),
+            ],
+            normal: TypedPoint3D::new(0.0, 0.0, 1.0),
+            offset: -1.0,
+            index: 0,
+        };
+        assert!(poly_c.is_valid());
     }
 
     #[test]
@@ -307,9 +395,9 @@ mod test {
         let poly_b: Polygon<f32, ()> = Polygon {
             points: [
                 TypedPoint3D::new(0.5, 0.0, 2.0),
-                TypedPoint3D::new(0.5, 0.0, 0.0),
                 TypedPoint3D::new(0.5, 1.0, 2.0),
                 TypedPoint3D::new(0.5, 1.0, 0.0),
+                TypedPoint3D::new(0.5, 0.0, 0.0),
             ],
             normal: TypedPoint3D::new(1.0, 0.0, 0.0),
             offset: -0.5,
@@ -318,7 +406,7 @@ mod test {
         assert!(poly_b.is_valid());
 
         let intersection = poly_a.intersect(&poly_b).unwrap();
-        println!("{:?}", intersection);
+        assert!(intersection.is_valid());
         // confirm the origin is on both planes
         assert!(poly_a.signed_distance_to(&intersection.origin).approx_eq(&0.0));
         assert!(poly_b.signed_distance_to(&intersection.origin).approx_eq(&0.0));
@@ -330,8 +418,8 @@ mod test {
             points: [
                 TypedPoint3D::new(0.0, -1.0, 2.0),
                 TypedPoint3D::new(0.0, -1.0, 0.0),
-                TypedPoint3D::new(0.0, 0.0, 2.0),
                 TypedPoint3D::new(0.0, 0.0, 0.0),
+                TypedPoint3D::new(0.0, 0.0, 2.0),
             ],
             normal: TypedPoint3D::new(1.0, 0.0, 0.0),
             offset: 0.0,
@@ -351,7 +439,65 @@ mod test {
         };
         assert!(poly_d.is_valid());
 
-        assert_eq!(poly_a.intersect(&poly_c), None);
-        assert_eq!(poly_a.intersect(&poly_d), None);
+        assert!(poly_a.intersect(&poly_c).is_none());
+        assert!(poly_a.intersect(&poly_d).is_none());
+    }
+
+    #[test]
+    fn split() {
+        let poly_base: Polygon<f32, ()> = Polygon {
+            points: [
+                TypedPoint3D::new(0.0, 1.0, 0.0),
+                TypedPoint3D::new(1.0, 1.0, 0.0),
+                TypedPoint3D::new(1.0, 1.0, 1.0),
+                TypedPoint3D::new(0.0, 1.0, 1.0),
+            ],
+            normal: TypedPoint3D::new(0.0, 1.0, 0.0),
+            offset: -1.0,
+            index: 1,
+        };
+
+        {   // non-intersecting line
+            let line = Line {
+                origin: TypedPoint3D::new(0.0, 1.0, 0.5),
+                dir: TypedPoint3D::new(0.0, 1.0, 0.0),
+            };
+            assert!(line.is_valid());
+            let mut poly = poly_base.clone();
+            let (extra1, extra2) = poly.split(&line);
+            assert_eq!(poly, poly_base);
+            assert!(extra1.is_none() && extra2.is_none());
+        }
+
+        {   // simple cut
+            let line = Line {
+                origin: TypedPoint3D::new(0.0, 1.0, 0.5),
+                dir: TypedPoint3D::new(1.0, 0.0, 0.0),
+            };
+            assert!(line.is_valid());
+            let mut poly = poly_base.clone();
+            let (extra1, extra2) = poly.split(&line);
+            assert!(extra1.is_some() && extra2.is_none());
+            assert!(poly.is_valid() && extra1.as_ref().unwrap().is_valid());
+            assert!(poly_base.contains(&poly));
+            assert!(poly_base.contains(&extra1.unwrap()));
+        }
+
+        {   // complex cut
+            let line = Line {
+                origin: TypedPoint3D::new(0.0, 1.0, 0.5),
+                dir: TypedPoint3D::new(0.5f32.sqrt(), 0.0, -0.5f32.sqrt()),
+            };
+            assert!(line.is_valid());
+            let mut poly = poly_base.clone();
+            let (extra1, extra2) = poly.split(&line);
+            assert!(extra1.is_some() && extra2.is_some());
+            assert!(poly.is_valid() &&
+                    extra1.as_ref().unwrap().is_valid() &&
+                    extra2.as_ref().unwrap().is_valid());
+            assert!(poly_base.contains(&poly));
+            assert!(poly_base.contains(&extra1.unwrap()));
+            assert!(poly_base.contains(&extra2.unwrap()));
+        }
     }
 }
