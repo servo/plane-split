@@ -259,8 +259,8 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
             3 => {
                 let xpoints = [
                     self.points[first+1],
-                    self.points[(first+2) % 4],
-                    self.points[(first+3) % 4],
+                    self.points[first+2],
+                    self.points[first+3],
                     b];
                 let ypoints = [a, self.points[first+1], b, b];
                 self.points = [self.points[first], a, b, b];
@@ -443,9 +443,24 @@ mod test {
         assert!(poly_a.intersect(&poly_d).is_none());
     }
 
+    fn test_cut(poly_base: &Polygon<f32, ()>, extra_count: u8, line: Line<f32, ()>) {
+        assert!(line.is_valid());
+        let mut poly = poly_base.clone();
+        let (extra1, extra2) = poly.split(&line);
+        assert!(poly.is_valid() && poly_base.contains(&poly));
+        assert_eq!(extra_count > 0, extra1.is_some());
+        assert_eq!(extra_count > 1, extra2.is_some());
+        if let Some(extra) = extra1 {
+            assert!(extra.is_valid() && poly_base.contains(&extra));
+        }
+        if let Some(extra) = extra2 {
+            assert!(extra.is_valid() && poly_base.contains(&extra));
+        }
+    }
+
     #[test]
     fn split() {
-        let poly_base: Polygon<f32, ()> = Polygon {
+        let poly: Polygon<f32, ()> = Polygon {
             points: [
                 TypedPoint3D::new(0.0, 1.0, 0.0),
                 TypedPoint3D::new(1.0, 1.0, 0.0),
@@ -457,47 +472,34 @@ mod test {
             index: 1,
         };
 
-        {   // non-intersecting line
-            let line = Line {
-                origin: TypedPoint3D::new(0.0, 1.0, 0.5),
-                dir: TypedPoint3D::new(0.0, 1.0, 0.0),
-            };
-            assert!(line.is_valid());
-            let mut poly = poly_base.clone();
-            let (extra1, extra2) = poly.split(&line);
-            assert_eq!(poly, poly_base);
-            assert!(extra1.is_none() && extra2.is_none());
-        }
+        // non-intersecting line
+        test_cut(&poly, 0, Line {
+            origin: TypedPoint3D::new(0.0, 1.0, 0.5),
+            dir: TypedPoint3D::new(0.0, 1.0, 0.0),
+        });
 
-        {   // simple cut
-            let line = Line {
-                origin: TypedPoint3D::new(0.0, 1.0, 0.5),
-                dir: TypedPoint3D::new(1.0, 0.0, 0.0),
-            };
-            assert!(line.is_valid());
-            let mut poly = poly_base.clone();
-            let (extra1, extra2) = poly.split(&line);
-            assert!(extra1.is_some() && extra2.is_none());
-            assert!(poly.is_valid() && extra1.as_ref().unwrap().is_valid());
-            assert!(poly_base.contains(&poly));
-            assert!(poly_base.contains(&extra1.unwrap()));
-        }
+        // simple cut (diff=2)
+        test_cut(&poly, 1, Line {
+            origin: TypedPoint3D::new(0.0, 1.0, 0.5),
+            dir: TypedPoint3D::new(1.0, 0.0, 0.0),
+        });
 
-        {   // complex cut
-            let line = Line {
-                origin: TypedPoint3D::new(0.0, 1.0, 0.5),
-                dir: TypedPoint3D::new(0.5f32.sqrt(), 0.0, -0.5f32.sqrt()),
-            };
-            assert!(line.is_valid());
-            let mut poly = poly_base.clone();
-            let (extra1, extra2) = poly.split(&line);
-            assert!(extra1.is_some() && extra2.is_some());
-            assert!(poly.is_valid() &&
-                    extra1.as_ref().unwrap().is_valid() &&
-                    extra2.as_ref().unwrap().is_valid());
-            assert!(poly_base.contains(&poly));
-            assert!(poly_base.contains(&extra1.unwrap()));
-            assert!(poly_base.contains(&extra2.unwrap()));
-        }
+        // complex cut (diff=1, wrapped)
+        test_cut(&poly, 2, Line {
+            origin: TypedPoint3D::new(0.0, 1.0, 0.5),
+            dir: TypedPoint3D::new(0.5f32.sqrt(), 0.0, -0.5f32.sqrt()),
+        });
+
+        // complex cut (diff=1, non-wrapped)
+        test_cut(&poly, 2, Line {
+            origin: TypedPoint3D::new(0.5, 1.0, 0.0),
+            dir: TypedPoint3D::new(0.5f32.sqrt(), 0.0, 0.5f32.sqrt()),
+        });
+
+        // complex cut (diff=3)
+        test_cut(&poly, 2, Line {
+            origin: TypedPoint3D::new(0.5, 1.0, 0.0),
+            dir: TypedPoint3D::new(-0.5f32.sqrt(), 0.0, 0.5f32.sqrt()),
+        });
     }
 }
