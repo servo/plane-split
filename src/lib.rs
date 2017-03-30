@@ -1,3 +1,6 @@
+#![feature(test)]
+
+extern crate test;
 extern crate euclid;
 
 mod naive;
@@ -175,7 +178,6 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
     pub fn intersect(&self, other: &Self) -> Option<Line<T, U>> {
         if self.are_outside(&other.points) || other.are_outside(&self.points) {
             // one is completely outside the other
-            println!("outside");
             return None
         }
         let cross_dir = self.normal.cross(other.normal);
@@ -303,8 +305,9 @@ pub trait Splitter<T, U> {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
+
     #[test]
     fn line_proj_bounds() {
         assert_eq!((-5i8, 4), LineProjection { markers: [-5i8, 1, 4, 2] }.get_bounds());
