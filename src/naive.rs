@@ -4,11 +4,14 @@ use {Polygon, Splitter};
 use euclid::approxeq::ApproxEq;
 use euclid::num::{One, Zero};
 
+
+/// Naive plane splitter, has at least O(n^2) complexity.
 pub struct NaiveSplitter<T, U> {
     result: Vec<Polygon<T, U>>,
 }
 
 impl<T, U> NaiveSplitter<T, U> {
+    /// Create a new `NaiveSplitter`.
     pub fn new() -> Self {
         NaiveSplitter {
             result: Vec::new(),

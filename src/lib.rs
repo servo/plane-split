@@ -1,3 +1,15 @@
+/*!
+Plane splitting.
+
+Uses [euclid](https://crates.io/crates/euclid) for the math basis.
+Introduces new geometrical primitives and associated logic.
+
+Automatically splits a given set of 4-point polygons into sub-polygons
+that don't intersect each other. This is useful for WebRender, to sort
+the resulting sub-polygons by depth and avoid transparency blending issues.
+*/
+#![warn(missing_docs)]
+
 extern crate euclid;
 
 mod naive;
@@ -9,6 +21,7 @@ use euclid::num::{One, Zero};
 
 pub use self::naive::NaiveSplitter;
 
+/// Index of the original polygon.
 pub type Index = u32;
 
 /// A generic line.
@@ -73,6 +86,7 @@ pub struct LineProjection<T> {
 }
 
 impl<T: Copy + PartialOrd + ops::Sub<T, Output=T> + ops::Add<T, Output=T>> LineProjection<T> {
+    /// Get the min/max of the line projection markers.
     pub fn get_bounds(&self) -> (T, T) {
         let (mut a, mut b, mut c, mut d) = (self.markers[0], self.markers[1], self.markers[2], self.markers[3]);
         // bitonic sort of 4 elements
@@ -96,6 +110,7 @@ impl<T: Copy + PartialOrd + ops::Sub<T, Output=T> + ops::Add<T, Output=T>> LineP
         (a, d)
     }
 
+    /// Check intersection with another line projection.
     pub fn intersect(&self, other: &Self) -> bool {
         // compute the bounds of both line projections
         let span = self.get_bounds();
@@ -171,6 +186,7 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
         }
     }
 
+    /// Compute the line of intersection with another polygon.
     pub fn intersect(&self, other: &Self) -> Option<Line<T, U>> {
         if self.are_outside(&other.points) || other.are_outside(&self.points) {
             // one is completely outside the other
@@ -202,7 +218,10 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
         })
     }
 
-    pub fn split(&mut self, line: &Line<T, U>) -> (Option<Polygon<T, U>>, Option<Polygon<T, U>>) {
+    /// Split the polygon along the specified `Line`. Will do nothing if the line
+    /// doesn't belong to the polygon plane.
+    pub fn split(&mut self, line: &Line<T, U>)
+                 -> (Option<Polygon<T, U>>, Option<Polygon<T, U>>) {
         // check if the cut is within the polygon plane first
         if !self.normal.dot(line.dir).approx_eq(&T::zero()) ||
            !self.signed_distance_to(&line.origin).approx_eq(&T::zero()) {
@@ -296,12 +315,17 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
     }
 }
 
+
+/// Generic plane splitter interface.
 pub trait Splitter<T, U> {
+    /// Resolve the polygon set, producing another set from it, in which
+    /// no two polygons are intersecting any more.
     fn solve(&mut self, polygons: &[Polygon<T, U>]) -> &[Polygon<T, U>];
 }
 
 
-#[doc(hidden)]
+/// Helper method used for benchmarks and tests.
+/// Constructs a 3D grid of polygons.
 pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
     let mut polys: Vec<Polygon<f32, ()>> = Vec::with_capacity(count*3);
     let len = count as f32;
