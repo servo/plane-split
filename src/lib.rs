@@ -21,9 +21,6 @@ use euclid::num::{One, Zero};
 
 pub use self::naive::NaiveSplitter;
 
-/// Index of the original polygon.
-pub type Index = u32;
-
 /// A generic line.
 #[derive(Debug)]
 pub struct Line<T, U> {
@@ -58,11 +55,9 @@ pub struct Polygon<T, U> {
     pub points: [TypedPoint3D<T, U>; 4],
     /// Normalized vector perpendicular to the polygon plane.
     pub normal: TypedPoint3D<T, U>,
-    /// Constant offset from the normal plane.
+    /// Constant offset from the normal plane, specified in the
+    /// direction opposite to the normal.
     pub offset: T,
-    /// An original index of the polygon. Used to track the
-    /// source when a polygon gets split.
-    pub index: Index,
 }
 
 impl<T: Clone, U> Clone for Polygon<T, U> {
@@ -74,7 +69,6 @@ impl<T: Clone, U> Clone for Polygon<T, U> {
                      self.points[3].clone()],
             normal: self.normal.clone(),
             offset: self.offset.clone(),
-            index: self.index,
         }
     }
 }
@@ -318,9 +312,22 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
 
 /// Generic plane splitter interface.
 pub trait Splitter<T, U> {
-    /// Resolve the polygon set, producing another set from it, in which
-    /// no two polygons are intersecting any more.
-    fn solve(&mut self, polygons: &[Polygon<T, U>]) -> &[Polygon<T, U>];
+    /// Reset the splitter results.
+    fn reset(&mut self);
+    /// Get all the accumulated polygons to date.
+    fn get_all(&self) -> &[Polygon<T, U>];
+    /// Add a new polygon and return a slice of the subdivisions
+    /// that avoid collision with any of the previously added polygons.
+    fn add(&mut self, Polygon<T, U>) -> &[Polygon<T, U>];
+    /// Process a set of polygons at once.
+    fn solve(&mut self, input: &[Polygon<T, U>]) -> &[Polygon<T, U>]
+    where T: Clone, U: Clone {
+        self.reset();
+        for p in input.iter() {
+            self.add(p.clone());
+        }
+        self.get_all()
+    }
 }
 
 
@@ -338,7 +345,6 @@ pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
         ],
         normal: TypedPoint3D::new(0.0, 1.0, 0.0),
         offset: -(i as f32),
-        index: 1,
     }));
     polys.extend((0 .. count).map(|i| Polygon {
         points: [
@@ -349,7 +355,6 @@ pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
         ],
         normal: TypedPoint3D::new(1.0, 0.0, 0.0),
         offset: -(i as f32),
-        index: 1,
     }));
     polys.extend((0 .. count).map(|i| Polygon {
         points: [
@@ -360,7 +365,6 @@ pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
         ],
         normal: TypedPoint3D::new(0.0, 0.0, 1.0),
         offset: -(i as f32),
-        index: 1,
     }));
     polys
 }

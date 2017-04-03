@@ -8,5 +8,5 @@ fn naive() {
     let polys = _make_grid(count);
     let mut splitter = NaiveSplitter::new();
     let result = splitter.solve(&polys);
-    assert_eq!(result.len(), 3*count*count*count);
+    assert_eq!(result.len(), count + count*count + count*count*count);
 }
