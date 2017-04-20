@@ -11,13 +11,15 @@ the resulting sub-polygons by depth and avoid transparency blending issues.
 #![warn(missing_docs)]
 
 extern crate euclid;
+extern crate num_traits;
 
 mod naive;
 
 use std::{fmt, mem, ops};
-use euclid::TypedPoint3D;
+use euclid::{TypedMatrix4D, TypedPoint3D, TypedRect};
 use euclid::approxeq::ApproxEq;
-use euclid::num::{One, Zero};
+use euclid::trig::Trig;
+use num_traits::{Float, One, Zero};
 
 pub use self::naive::NaiveSplitter;
 
@@ -31,7 +33,8 @@ pub struct Line<T, U> {
 }
 
 impl<
-    T: Copy + One + Zero + PartialEq + ApproxEq<T> + ops::Add<T, Output=T> + ops::Sub<T, Output=T> + ops::Mul<T, Output=T>,
+    T: Copy + One + Zero + PartialEq + ApproxEq<T> +
+       ops::Add<T, Output=T> + ops::Sub<T, Output=T> + ops::Mul<T, Output=T>,
     U,
 > Line<T, U> {
     /// Check if the line has consistent parameters.
@@ -41,7 +44,7 @@ impl<
     /// Check if two lines match each other.
     pub fn matches(&self, other: &Self) -> bool {
         let diff = self.origin - other.origin;
-        let zero = TypedPoint3D::new(T::zero(), T::zero(), T::zero());
+        let zero = TypedPoint3D::zero();
         self.dir.cross(other.dir).approx_eq(&zero) &&
         self.dir.cross(diff).approx_eq(&zero)
     }
@@ -117,14 +120,37 @@ impl<T: Copy + PartialOrd + ops::Sub<T, Output=T> + ops::Add<T, Output=T>> LineP
     }
 }
 
-fn scale<T: Copy + ops::Mul<T, Output=T>, U>(vec: TypedPoint3D<T, U>, factor: T) -> TypedPoint3D<T, U> {
-    TypedPoint3D::new(vec.x * factor, vec.y * factor, vec.z * factor)
-}
-
 impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
         ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
         ops::Mul<T, Output=T> + ops::Div<T, Output=T>,
      U> Polygon<T, U> {
+
+    /// Construct a polygon from a transformed rectangle.
+    pub fn from_transformed_rect<V>(rect: TypedRect<T, V>,
+                                    transform: TypedMatrix4D<T, V, U>)
+                                    -> Polygon<T, U>
+    where T: Trig + Float + ops::Neg<Output=T> {
+        let points = [
+            transform.transform_point3d(&rect.origin.to_3d()),
+            transform.transform_point3d(&rect.top_right().to_3d()),
+            transform.transform_point3d(&rect.bottom_right().to_3d()),
+            transform.transform_point3d(&rect.bottom_left().to_3d()),
+        ];
+
+        //Note: this code path could be more efficient if we had inverse-transpose
+        //let n4 = transform.transform_point4d(&TypedPoint4D::new(T::zero(), T::zero(), T::one(), T::zero()));
+        //let normal = TypedPoint3D::new(n4.x, n4.y, n4.z);
+
+        let normal = (points[1] - points[0]).cross(points[2] - points[0])
+                                            .normalize();
+        let offset = -TypedPoint3D::new(transform.m41, transform.m42, transform.m43).dot(normal);
+
+        Polygon {
+            points: points,
+            normal: normal,
+            offset: offset,
+        }
+    }
 
     /// Return the signed distance from this polygon to a point.
     /// The distance is negative if the point is on the other side of the polygon
@@ -135,10 +161,10 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
 
     /// Check if all the points are indeed placed on the plane defined by
     /// the normal and offset, and the winding order is consistent.
-    pub fn is_valid(&self) -> bool {
+    /// The epsion is specified for the plane distance calculations.
+    pub fn is_valid_eps(&self, eps: T) -> bool {
         let is_planar = self.points.iter()
-                                   .find(|p| !self.signed_distance_to(p).approx_eq(&T::zero()))
-                                   .is_none();
+                                   .all(|p| self.signed_distance_to(p).approx_eq_eps(&T::zero(), &eps));
         let edges = [self.points[1] - self.points[0],
                      self.points[2] - self.points[1],
                      self.points[3] - self.points[2],
@@ -146,9 +172,13 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
         let anchor = edges[3].cross(edges[0]);
         let is_winding = edges.iter()
                               .zip(edges[1..].iter())
-                              .find(|&(a, &b)| a.cross(b).dot(anchor) < T::zero())
-                              .is_none();
+                              .all(|(a, &b)| a.cross(b).dot(anchor) >= T::zero());
         is_planar && is_winding
+    }
+
+    /// Check validity. Similar to `is_valid_eps` but with default epsilon.
+    pub fn is_valid(&self) -> bool {
+        self.is_valid_eps(T::approx_epsilon())
     }
 
     /// Check if a convex shape defined by a set of points is completely
@@ -157,8 +187,7 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
     pub fn are_outside(&self, points: &[TypedPoint3D<T, U>]) -> bool {
         let d0 = self.signed_distance_to(&points[0]);
         points[1..].iter()
-                   .find(|p| self.signed_distance_to(p) * d0 <= T::zero())
-                   .is_none()
+                   .all(|p| self.signed_distance_to(p) * d0 > T::zero())
     }
 
     /// Check if this polygon contains another one.
@@ -204,8 +233,8 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
         // v = (d2*w - d1) / (1 - w*w) * n1 - (d2 - d1*w) / (1 - w*w) * n2
         let w = self.normal.dot(other.normal);
         let factor = T::one() / (T::one() - w * w);
-        let center = scale(self.normal, (other.offset * w - self.offset) * factor) -
-                     scale(other.normal, (other.offset - self.offset * w) * factor);
+        let center = self.normal * ((other.offset * w - self.offset) * factor) -
+                     other.normal* ((other.offset - self.offset * w) * factor);
         Some(Line {
             origin: center,
             dir: cross_dir,
@@ -233,13 +262,13 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
             //(a, d) + t * (b-a, d) - (r, d) = k
             // a + t * (b-a) = r + t * (b-a, d) * d + (a-r, d) * d
             // t * ((b-a) - (b-a, d)*d) = (r-a) - (r-a, d) * d
-            let pr = line.origin - a - scale(line.dir, line.dir.dot(line.origin - a));
-            let pb = b - a - scale(line.dir, line.dir.dot(b - a));
+            let pr = line.origin - a - line.dir * line.dir.dot(line.origin - a);
+            let pb = b - a - line.dir * line.dir.dot(b - a);
             let denom = pb.dot(pb);
             if !denom.approx_eq(&T::zero()) {
                 let t = pr.dot(pb) / denom;
                 if t > T::zero() && t < T::one() {
-                    *cut = Some(a + scale(b - a, t));
+                    *cut = Some(a + (b - a) * t);
                 }
             }
         }

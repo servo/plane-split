@@ -1,7 +1,7 @@
 use std::{fmt, ops};
 use {Polygon, Splitter};
 use euclid::approxeq::ApproxEq;
-use euclid::num::{One, Zero};
+use num_traits::{One, Zero};
 
 
 /// Naive plane splitter, has at least O(n^2) complexity.

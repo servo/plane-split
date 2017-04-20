@@ -1,7 +1,7 @@
 extern crate euclid;
 extern crate plane_split;
 
-use euclid::TypedPoint3D;
+use euclid::{Radians, TypedPoint2D, TypedPoint3D, TypedRect, TypedSize2D, TypedMatrix4D};
 use euclid::approxeq::ApproxEq;
 use plane_split::{Line, LineProjection, Polygon};
 
@@ -47,6 +47,16 @@ fn valid() {
         offset: -1.0,
     };
     assert!(poly_c.is_valid());
+}
+
+#[test]
+fn from_transformed_rect() {
+    let rect: TypedRect<f32, ()> = TypedRect::new(TypedPoint2D::new(10.0, 10.0), TypedSize2D::new(20.0, 30.0));
+    let transform: TypedMatrix4D<f32, (), ()> =
+        TypedMatrix4D::create_rotation(0.5f32.sqrt(), 0.0, 0.5f32.sqrt(), Radians::new(5.0))
+        .pre_translated(0.0, 0.0, 10.0);
+    let poly = Polygon::from_transformed_rect(rect, transform);
+    assert!(poly.is_valid_eps(1e-5));
 }
 
 #[test]
