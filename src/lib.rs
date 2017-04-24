@@ -16,7 +16,7 @@ extern crate num_traits;
 mod naive;
 
 use std::{fmt, mem, ops};
-use euclid::{TypedMatrix4D, TypedPoint3D, TypedRect};
+use euclid::{Point2D, TypedMatrix4D, TypedPoint3D, TypedRect};
 use euclid::approxeq::ApproxEq;
 use euclid::trig::Trig;
 use num_traits::{Float, One, Zero};
@@ -150,6 +150,27 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
             normal: normal,
             offset: offset,
         }
+    }
+
+    /// Bring a point into the local coordinate space, returning
+    /// the 2D normalized coordinates.
+    pub fn untransform_point(&self, point: TypedPoint3D<T, U>) -> Point2D<T> {
+        //debug_assert!(self.contains(point));
+        // get axises and target vector
+        let a = self.points[1] - self.points[0];
+        let b = self.points[3] - self.points[0];
+        let c = point - self.points[0];
+        // get pair-wise dot products
+        let a2 = a.dot(a);
+        let ab = a.dot(b);
+        let b2 = b.dot(b);
+        let ca = c.dot(a);
+        let cb = c.dot(b);
+        // compute the final coordinates
+        let denom = ab * ab - a2 * b2;
+        let x = ab * cb - b2 * ca;
+        let y = ab * ca - a2 * cb;
+        Point2D::new(x, y) / denom
     }
 
     /// Return the signed distance from this polygon to a point.

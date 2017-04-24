@@ -1,7 +1,7 @@
 extern crate euclid;
 extern crate plane_split;
 
-use euclid::{Radians, TypedPoint2D, TypedPoint3D, TypedRect, TypedSize2D, TypedMatrix4D};
+use euclid::{Point2D, Radians, TypedPoint2D, TypedPoint3D, TypedRect, TypedSize2D, TypedMatrix4D};
 use euclid::approxeq::ApproxEq;
 use plane_split::{Line, LineProjection, Polygon};
 
@@ -50,13 +50,31 @@ fn valid() {
 }
 
 #[test]
-fn from_transformed_rect() {
+fn from_rect() {
     let rect: TypedRect<f32, ()> = TypedRect::new(TypedPoint2D::new(10.0, 10.0), TypedSize2D::new(20.0, 30.0));
     let transform: TypedMatrix4D<f32, (), ()> =
         TypedMatrix4D::create_rotation(0.5f32.sqrt(), 0.0, 0.5f32.sqrt(), Radians::new(5.0))
         .pre_translated(0.0, 0.0, 10.0);
     let poly = Polygon::from_transformed_rect(rect, transform);
     assert!(poly.is_valid_eps(1e-5));
+}
+
+#[test]
+fn untransform_point() {
+    let poly: Polygon<f32, ()> = Polygon {
+        points: [
+            TypedPoint3D::new(0.0, 0.0, 0.0),
+            TypedPoint3D::new(0.5, 1.0, 0.0),
+            TypedPoint3D::new(1.5, 1.0, 0.0),
+            TypedPoint3D::new(1.0, 0.0, 0.0),
+        ],
+        normal: TypedPoint3D::new(0.0, 1.0, 0.0),
+        offset: 0.0,
+    };
+    assert_eq!(poly.untransform_point(poly.points[0]), Point2D::new(0.0, 0.0));
+    assert_eq!(poly.untransform_point(poly.points[1]), Point2D::new(1.0, 0.0));
+    assert_eq!(poly.untransform_point(poly.points[2]), Point2D::new(1.0, 1.0));
+    assert_eq!(poly.untransform_point(poly.points[3]), Point2D::new(0.0, 1.0));
 }
 
 #[test]
