@@ -1,4 +1,5 @@
-use std::{cmp, fmt, ops};
+use std::{fmt, ops};
+use std::cmp::Ordering;
 use {Line, Polygon, Splitter};
 use euclid::TypedPoint3D;
 use euclid::approxeq::ApproxEq;
@@ -23,14 +24,16 @@ impl<T, U> NaiveSplitter<T, U> {
     }
 }
 
-/// find a closest intersection point between two polygons,
-/// across the specified direction
+/// Find a closest intersection point between two polygons,
+/// across the specified direction.
 fn intersect_across<T, U>(a: &Polygon<T, U>, b: &Polygon<T, U>,
-                          dir: TypedPoint3D<T, U>) -> TypedPoint3D<T, U>
+                          dir: TypedPoint3D<T, U>)
+                          -> TypedPoint3D<T, U>
 where
-    T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
+    T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
         ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
-        ops::Mul<T, Output=T> + ops::Div<T, Output=T>,
+        ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
+        Zero + One + Float,
 {
     let pa = a.project_on(&dir).get_bounds();
     let pb = b.project_on(&dir).get_bounds();
@@ -42,11 +45,54 @@ where
     dir * (k / (T::one() + T::one()))
 }
 
+fn partial_sort_by<T, F>(array: &mut [T], fun: F) where
+    F: Fn(&T, &T) -> Ordering,
+{
+    for i in 0 .. array.len() - 1 {
+        let mut up_start = array.len();
+        // placement is: [i, ... equals ..., up_start, ... greater ..., j]
+        // if this condition fails, everything to the right is greater
+        'find_smallest: while i + 1 != up_start {
+            let mut j = i + 1;
+            'partition: loop {
+                match fun(&array[i], &array[j]) {
+                    Ordering::Less => {
+                        // push back to "greater" area
+                        up_start -= 1;
+                        if j == up_start {
+                            break 'partition
+                        }
+                        array.swap(j, up_start);
+                    },
+                    Ordering::Equal => {
+                        // continue
+                        j += 1;
+                        if j == up_start {
+                            // we reached the end of the "equal" area
+                            // so our "i" can be placed anywhere
+                            break 'find_smallest;
+                        }
+                    }
+                    Ordering::Greater => {
+                        array.swap(i, j);
+                        up_start -= 1;
+                        array.swap(j, up_start);
+                        // found a smaller one, push "i" to the "greater" area
+                        // and restart the search from the current element
+                        break 'partition;
+                    },
+                }
+            }
+        }
+    }
+}
+
+
 impl<
-    T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
+    T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
        ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
        ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
-       Float + cmp::PartialOrd,
+       Zero + One + Float,
     U: fmt::Debug,
 > Splitter<T, U> for NaiveSplitter<T, U> {
     fn reset(&mut self) {
@@ -84,6 +130,7 @@ impl<
         &self.result[index..]
     }
 
+    //TODO: verify/prove that the sorting approach is consistent
     fn sort(&mut self, view: TypedPoint3D<T, U>) {
         // choose the most perpendicular axis among these two
         let axis_pre = {
@@ -99,7 +146,8 @@ impl<
         let axis_x = view.cross(axis_pre);
         let axis_y = view.cross(axis_x);
         // sort everything
-        self.result.sort_by(|a, b| {
+        partial_sort_by(&mut self.result, |a, b| {
+            //TODO: proper intersection
             // compute the origin
             let comp_x = intersect_across(a, b, axis_x);
             let comp_y = intersect_across(a, b, axis_y);
@@ -110,10 +158,9 @@ impl<
             };
             // distances across the line
             let da = a.distance_to_line(&line);
-            let db = a.distance_to_line(&line);
+            let db = b.distance_to_line(&line);
             // final compare
-            da.partial_cmp(&db)
-              .unwrap_or(cmp::Ordering::Equal)
+            da.partial_cmp(&db).unwrap_or(Ordering::Equal)
         })
     }
 }

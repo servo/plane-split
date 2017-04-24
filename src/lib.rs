@@ -124,9 +124,10 @@ impl<T: Copy + PartialOrd + ops::Sub<T, Output=T> + ops::Add<T, Output=T>> LineP
     }
 }
 
-impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
+impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
         ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
-        ops::Mul<T, Output=T> + ops::Div<T, Output=T>,
+        ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
+        Zero + One + Float,
      U> Polygon<T, U> {
 
     /// Construct a polygon from a transformed rectangle.
@@ -134,7 +135,7 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
                                     transform: TypedMatrix4D<T, V, U>,
                                     anchor: usize)
                                     -> Polygon<T, U>
-    where T: Trig + Float + ops::Neg<Output=T> {
+    where T: Trig + ops::Neg<Output=T> {
         let points = [
             transform.transform_point3d(&rect.origin.to_3d()),
             transform.transform_point3d(&rect.top_right().to_3d()),
@@ -271,7 +272,7 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
                      other.normal* ((other.offset - self.offset * w) * factor);
         Some(Line {
             origin: center,
-            dir: cross_dir,
+            dir: cross_dir.normalize(),
         })
     }
 

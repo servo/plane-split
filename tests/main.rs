@@ -53,7 +53,7 @@ fn valid() {
 }
 
 #[test]
-fn from_rect() {
+fn from_transformed_rect() {
     let rect: TypedRect<f32, ()> = TypedRect::new(TypedPoint2D::new(10.0, 10.0), TypedSize2D::new(20.0, 30.0));
     let transform: TypedMatrix4D<f32, (), ()> =
         TypedMatrix4D::create_rotation(0.5f32.sqrt(), 0.0, 0.5f32.sqrt(), Radians::new(5.0))
