@@ -1,5 +1,6 @@
 use std::{fmt, ops};
 use {Polygon, Splitter};
+use euclid::TypedPoint3D;
 use euclid::approxeq::ApproxEq;
 use num_traits::{One, Zero};
 
@@ -61,5 +62,9 @@ impl<
         let index = self.result.len();
         self.result.extend(self.current.drain(..));
         &self.result[index..]
+    }
+
+    fn sort(&mut self, view: TypedPoint3D<T, U>) {
+        //unimplemented!()
     }
 }

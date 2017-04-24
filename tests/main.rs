@@ -23,6 +23,7 @@ fn valid() {
         ],
         normal: TypedPoint3D::new(0.0, 1.0, 0.0),
         offset: -1.0,
+        anchor: 0,
     };
     assert!(!poly_a.is_valid()); // points[0] is outside
     let poly_b: Polygon<f32, ()> = Polygon {
@@ -34,6 +35,7 @@ fn valid() {
         ],
         normal: TypedPoint3D::new(0.0, 1.0, 0.0),
         offset: -1.0,
+        anchor: 0,
     };
     assert!(!poly_b.is_valid()); // winding is incorrect
     let poly_c: Polygon<f32, ()> = Polygon {
@@ -45,6 +47,7 @@ fn valid() {
         ],
         normal: TypedPoint3D::new(0.0, 0.0, 1.0),
         offset: -1.0,
+        anchor: 0,
     };
     assert!(poly_c.is_valid());
 }
@@ -55,7 +58,7 @@ fn from_rect() {
     let transform: TypedMatrix4D<f32, (), ()> =
         TypedMatrix4D::create_rotation(0.5f32.sqrt(), 0.0, 0.5f32.sqrt(), Radians::new(5.0))
         .pre_translated(0.0, 0.0, 10.0);
-    let poly = Polygon::from_transformed_rect(rect, transform);
+    let poly = Polygon::from_transformed_rect(rect, transform, 0);
     assert!(poly.is_valid_eps(1e-5));
 }
 
@@ -70,6 +73,7 @@ fn untransform_point() {
         ],
         normal: TypedPoint3D::new(0.0, 1.0, 0.0),
         offset: 0.0,
+        anchor: 0,
     };
     assert_eq!(poly.untransform_point(poly.points[0]), Point2D::new(0.0, 0.0));
     assert_eq!(poly.untransform_point(poly.points[1]), Point2D::new(1.0, 0.0));
@@ -88,6 +92,7 @@ fn are_outside() {
         ],
         normal: TypedPoint3D::new(0.0, 0.0, 1.0),
         offset: -1.0,
+        anchor: 0,
     };
     assert!(poly.is_valid());
     assert!(poly.are_outside(&[
@@ -114,6 +119,7 @@ fn intersect() {
         ],
         normal: TypedPoint3D::new(0.0, 0.0, 1.0),
         offset: -1.0,
+        anchor: 0,
     };
     assert!(poly_a.is_valid());
     let poly_b: Polygon<f32, ()> = Polygon {
@@ -125,6 +131,7 @@ fn intersect() {
         ],
         normal: TypedPoint3D::new(1.0, 0.0, 0.0),
         offset: -0.5,
+        anchor: 0,
     };
     assert!(poly_b.is_valid());
 
@@ -146,6 +153,7 @@ fn intersect() {
         ],
         normal: TypedPoint3D::new(1.0, 0.0, 0.0),
         offset: 0.0,
+        anchor: 0,
     };
     assert!(poly_c.is_valid());
     let poly_d: Polygon<f32, ()> = Polygon {
@@ -157,6 +165,7 @@ fn intersect() {
         ],
         normal: TypedPoint3D::new(0.0, 0.0, 1.0),
         offset: -0.5,
+        anchor: 0,
     };
     assert!(poly_d.is_valid());
 
@@ -190,6 +199,7 @@ fn split() {
         ],
         normal: TypedPoint3D::new(0.0, 1.0, 0.0),
         offset: -1.0,
+        anchor: 0,
     };
 
     // non-intersecting line

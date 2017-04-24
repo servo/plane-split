@@ -61,6 +61,9 @@ pub struct Polygon<T, U> {
     /// Constant offset from the normal plane, specified in the
     /// direction opposite to the normal.
     pub offset: T,
+    /// A simple anchoring index to allow association of the
+    /// produced split polygons with the original one.
+    pub anchor: usize,
 }
 
 impl<T: Clone, U> Clone for Polygon<T, U> {
@@ -72,6 +75,7 @@ impl<T: Clone, U> Clone for Polygon<T, U> {
                      self.points[3].clone()],
             normal: self.normal.clone(),
             offset: self.offset.clone(),
+            anchor: self.anchor,
         }
     }
 }
@@ -127,7 +131,8 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
 
     /// Construct a polygon from a transformed rectangle.
     pub fn from_transformed_rect<V>(rect: TypedRect<T, V>,
-                                    transform: TypedMatrix4D<T, V, U>)
+                                    transform: TypedMatrix4D<T, V, U>,
+                                    anchor: usize)
                                     -> Polygon<T, U>
     where T: Trig + Float + ops::Neg<Output=T> {
         let points = [
@@ -149,6 +154,7 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
             points: points,
             normal: normal,
             offset: offset,
+            anchor: anchor,
         }
     }
 
@@ -364,18 +370,27 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
 pub trait Splitter<T, U> {
     /// Reset the splitter results.
     fn reset(&mut self);
+
     /// Get all the accumulated polygons to date.
     fn get_all(&self) -> &[Polygon<T, U>];
+
     /// Add a new polygon and return a slice of the subdivisions
     /// that avoid collision with any of the previously added polygons.
     fn add(&mut self, Polygon<T, U>) -> &[Polygon<T, U>];
+
+    /// Sort the produced polygon set by the ascending distance across
+    /// the specified view vector.
+    fn sort(&mut self, TypedPoint3D<T, U>);
+
     /// Process a set of polygons at once.
-    fn solve(&mut self, input: &[Polygon<T, U>]) -> &[Polygon<T, U>]
+    fn solve(&mut self, input: &[Polygon<T, U>], view: TypedPoint3D<T, U>)
+             -> &[Polygon<T, U>]
     where T: Clone, U: Clone {
         self.reset();
         for p in input.iter() {
             self.add(p.clone());
         }
+        self.sort(view);
         self.get_all()
     }
 }
@@ -395,6 +410,7 @@ pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
         ],
         normal: TypedPoint3D::new(0.0, 1.0, 0.0),
         offset: -(i as f32),
+        anchor: 0,
     }));
     polys.extend((0 .. count).map(|i| Polygon {
         points: [
@@ -405,6 +421,7 @@ pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
         ],
         normal: TypedPoint3D::new(1.0, 0.0, 0.0),
         offset: -(i as f32),
+        anchor: 0,
     }));
     polys.extend((0 .. count).map(|i| Polygon {
         points: [
@@ -415,6 +432,7 @@ pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
         ],
         normal: TypedPoint3D::new(0.0, 0.0, 1.0),
         offset: -(i as f32),
+        anchor: 0,
     }));
     polys
 }
