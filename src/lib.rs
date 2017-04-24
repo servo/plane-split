@@ -186,6 +186,13 @@ impl<T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
         point.dot(self.normal) + self.offset
     }
 
+    /// Compute the distance across the line to the polygon plane,
+    /// starting from the line origin.
+    pub fn distance_to_line(&self, line: &Line<T, U>) -> T
+    where T: ops::Neg<Output=T> {
+        self.signed_distance_to(&line.origin) / -self.normal.dot(line.dir)
+    }
+
     /// Check if all the points are indeed placed on the plane defined by
     /// the normal and offset, and the winding order is consistent.
     /// The epsion is specified for the plane distance calculations.

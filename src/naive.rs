@@ -1,8 +1,8 @@
-use std::{fmt, ops};
-use {Polygon, Splitter};
+use std::{cmp, fmt, ops};
+use {Line, Polygon, Splitter};
 use euclid::TypedPoint3D;
 use euclid::approxeq::ApproxEq;
-use num_traits::{One, Zero};
+use num_traits::{Float, One, Zero};
 
 
 /// Naive plane splitter, has at least O(n^2) complexity.
@@ -23,10 +23,30 @@ impl<T, U> NaiveSplitter<T, U> {
     }
 }
 
+/// find a closest intersection point between two polygons,
+/// across the specified direction
+fn intersect_across<T, U>(a: &Polygon<T, U>, b: &Polygon<T, U>,
+                          dir: TypedPoint3D<T, U>) -> TypedPoint3D<T, U>
+where
+    T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
+        ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
+        ops::Mul<T, Output=T> + ops::Div<T, Output=T>,
+{
+    let pa = a.project_on(&dir).get_bounds();
+    let pb = b.project_on(&dir).get_bounds();
+    let k = if pa.0 < pb.0 {
+        pa.1 + pb.0
+    } else {
+        pb.1 + pa.0
+    };
+    dir * (k / (T::one() + T::one()))
+}
+
 impl<
     T: Copy + fmt::Debug + PartialOrd + Zero + One + ApproxEq<T> +
        ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
-       ops::Mul<T, Output=T> + ops::Div<T, Output=T>,
+       ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
+       Float + cmp::PartialOrd,
     U: fmt::Debug,
 > Splitter<T, U> for NaiveSplitter<T, U> {
     fn reset(&mut self) {
@@ -65,6 +85,35 @@ impl<
     }
 
     fn sort(&mut self, view: TypedPoint3D<T, U>) {
-        //unimplemented!()
+        // choose the most perpendicular axis among these two
+        let axis_pre = {
+            let axis_pre0 = TypedPoint3D::new(T::one(), T::zero(), T::zero());
+            let axis_pre1 = TypedPoint3D::new(T::zero(), T::one(), T::zero());
+            if view.dot(axis_pre0).abs() < view.dot(axis_pre1).abs() {
+                axis_pre0
+            } else {
+                axis_pre1
+            }
+        };
+        // do the orthogonalization
+        let axis_x = view.cross(axis_pre);
+        let axis_y = view.cross(axis_x);
+        // sort everything
+        self.result.sort_by(|a, b| {
+            // compute the origin
+            let comp_x = intersect_across(a, b, axis_x);
+            let comp_y = intersect_across(a, b, axis_y);
+            // line that tries to intersect both
+            let line = Line {
+                origin: comp_x + comp_y,
+                dir: view,
+            };
+            // distances across the line
+            let da = a.distance_to_line(&line);
+            let db = a.distance_to_line(&line);
+            // final compare
+            da.partial_cmp(&db)
+              .unwrap_or(cmp::Ordering::Equal)
+        })
     }
 }
