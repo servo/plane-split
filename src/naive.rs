@@ -37,17 +37,21 @@ where
 {
     let pa = a.project_on(&dir).get_bounds();
     let pb = b.project_on(&dir).get_bounds();
-    let k = if pa.0 < pb.0 {
-        pa.1 + pb.0
-    } else {
-        pb.1 + pa.0
-    };
-    dir * (k / (T::one() + T::one()))
+    let pmin = pa.0.max(pb.0);
+    let pmax = pa.1.min(pb.1);
+    let k = (pmin + pmax) / (T::one() + T::one());
+    debug!("\t\tIntersection pa {:?} pb {:?} k {:?}", pa, pb, k);
+    dir * k
 }
 
 fn partial_sort_by<T, F>(array: &mut [T], fun: F) where
     F: Fn(&T, &T) -> Ordering,
+    T: fmt::Debug,
 {
+    debug!("\nSorting");
+    if array.is_empty() {
+        return
+    }
     for i in 0 .. array.len() - 1 {
         let mut up_start = array.len();
         // placement is: [i, ... equals ..., up_start, ... greater ..., j]
@@ -55,7 +59,10 @@ fn partial_sort_by<T, F>(array: &mut [T], fun: F) where
         'find_smallest: while i + 1 != up_start {
             let mut j = i + 1;
             'partition: loop {
-                match fun(&array[i], &array[j]) {
+                debug!("\tComparing {} to {}, up_start = {}", i, j, up_start);
+                let order = fun(&array[i], &array[j]);
+                debug!("\t\t{:?}", order);
+                match order {
                     Ordering::Less => {
                         // push back to "greater" area
                         up_start -= 1;
@@ -84,6 +91,7 @@ fn partial_sort_by<T, F>(array: &mut [T], fun: F) where
                 }
             }
         }
+        debug!("\tEnding {} with up_start={}, poly {:?}", i, up_start, array[i]);
     }
 }
 
@@ -127,6 +135,7 @@ impl<
         }
         let index = self.result.len();
         self.result.extend(self.current.drain(..));
+        debug!("Split result: {:?}", &self.result[index..]);
         &self.result[index..]
     }
 
@@ -145,8 +154,11 @@ impl<
         // do the orthogonalization
         let axis_x = view.cross(axis_pre);
         let axis_y = view.cross(axis_x);
+        debug!("Chosen axis {:?} {:?}", axis_x, axis_y);
         // sort everything
         partial_sort_by(&mut self.result, |a, b| {
+            debug!("\t\t{:?}", a);
+            debug!("\t\t{:?}", b);
             //TODO: proper intersection
             // compute the origin
             let comp_x = intersect_across(a, b, axis_x);
@@ -156,9 +168,11 @@ impl<
                 origin: comp_x + comp_y,
                 dir: view,
             };
+            debug!("\t\tGot {:?}", line);
             // distances across the line
             let da = a.distance_to_line(&line);
             let db = b.distance_to_line(&line);
+            debug!("\t\tDistances {:?} {:?}", da, db);
             // final compare
             da.partial_cmp(&db).unwrap_or(Ordering::Equal)
         })

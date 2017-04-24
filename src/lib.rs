@@ -10,6 +10,8 @@ the resulting sub-polygons by depth and avoid transparency blending issues.
 */
 #![warn(missing_docs)]
 
+#[macro_use]
+extern crate log;
 extern crate euclid;
 extern crate num_traits;
 
