@@ -129,9 +129,13 @@ impl<T: Copy + PartialOrd + ops::Sub<T, Output=T> + ops::Add<T, Output=T>> LineP
     }
 }
 
+/// Polygon intersection results.
 pub enum Intersection<T> {
+    /// Polygons are coplanar, including the case of being on the same plane.
     Coplanar,
+    /// Polygon planes are intersecting, but polygons are not.
     Outside,
+    /// Polygons are actually intersecting.
     Inside(T),
 }
 

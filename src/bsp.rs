@@ -58,12 +58,14 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
 }
 
 
+/// Binary Space Partitioning splitter, uses a BSP tree.
 pub struct BspSplitter<T, U> {
     tree: BspNode<Polygon<T, U>>,
     result: Vec<Polygon<T, U>>,
 }
 
 impl<T, U> BspSplitter<T, U> {
+    /// Create a new BSP splitter.
     pub fn new() -> Self {
         Self {
             tree: BspNode::new(),
