@@ -13,7 +13,7 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
      U> Plane for Polygon<T, U> {
 
     fn cut(&self, mut plane: Self) -> PlaneCut<Self> {
-        let dist = self.signed_distance_to(&plane.points[0]);
+        let dist = self.signed_distance_sum_to(&plane);
         match self.intersect(&plane) {
             Intersection::Coplanar if dist.approx_eq(&T::zero()) => {
                 PlaneCut::Sibling(plane)

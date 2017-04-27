@@ -23,7 +23,7 @@ fn grid_bsp() {
 }
 
 
-fn sort_impl(splitter: &mut Splitter<f32, ()>) {
+fn sort_rotation(splitter: &mut Splitter<f32, ()>) {
     let transform0: TypedMatrix4D<f32, (), ()> =
         TypedMatrix4D::create_rotation(0.0, 1.0, 0.0, Radians::new(-FRAC_PI_4));
     let transform1: TypedMatrix4D<f32, (), ()> =
@@ -44,11 +44,37 @@ fn sort_impl(splitter: &mut Splitter<f32, ()>) {
 }
 
 #[test]
-fn sort_naive() {
-    sort_impl(&mut NaiveSplitter::new());
+fn rotation_naive() {
+    sort_rotation(&mut NaiveSplitter::new());
 }
 
 #[test]
-fn sort_bsp() {
-    sort_impl(&mut BspSplitter::new());
+fn rotation_bsp() {
+    sort_rotation(&mut BspSplitter::new());
+}
+
+
+fn sort_trivial(splitter: &mut Splitter<f32, ()>) {
+    let anchors: Vec<_> = (0usize .. 10).collect();
+    let rect: TypedRect<f32, ()> = TypedRect::new(TypedPoint2D::new(-10.0, -10.0), TypedSize2D::new(20.0, 20.0));
+    let polys: Vec<_> = anchors.iter().map(|&anchor| {
+        let transform: TypedMatrix4D<f32, (), ()> = TypedMatrix4D::create_translation(0.0, 0.0, anchor as f32);
+        Polygon::from_transformed_rect(rect, transform, anchor)
+    }).collect();
+
+    let result = splitter.solve(&polys, TypedPoint3D::new(0.0, 0.0, -1.0));
+    let anchors1: Vec<_> = result.iter().map(|p| p.anchor).collect();
+    let mut anchors2 = anchors1.clone();
+    anchors2.sort_by_key(|&a| -(a as i32));
+    assert_eq!(anchors1, anchors2); //make sure Z is sorted backwards
+}
+
+#[test]
+fn trivial_naive() {
+    sort_trivial(&mut NaiveSplitter::new());
+}
+
+#[test]
+fn trivial_bsp() {
+    sort_trivial(&mut BspSplitter::new());
 }
