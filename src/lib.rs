@@ -10,11 +10,13 @@ the resulting sub-polygons by depth and avoid transparency blending issues.
 */
 #![warn(missing_docs)]
 
+extern crate binary_space_partition;
+extern crate euclid;
 #[macro_use]
 extern crate log;
-extern crate euclid;
 extern crate num_traits;
 
+mod bsp;
 mod naive;
 
 use std::{fmt, mem, ops};
@@ -23,6 +25,7 @@ use euclid::approxeq::ApproxEq;
 use euclid::trig::Trig;
 use num_traits::{Float, One, Zero};
 
+pub use self::bsp::BspSplitter;
 pub use self::naive::NaiveSplitter;
 
 /// A generic line.
@@ -126,6 +129,29 @@ impl<T: Copy + PartialOrd + ops::Sub<T, Output=T> + ops::Add<T, Output=T>> LineP
     }
 }
 
+pub enum Intersection<T> {
+    Coplanar,
+    Outside,
+    Inside(T),
+}
+
+impl<T> Intersection<T> {
+    /// Return true if the intersection is completely outside.
+    pub fn is_outside(&self) -> bool {
+        match *self {
+            Intersection::Outside => true,
+            _ => false,
+        }
+    }
+    /// Return true if the intersection cuts the source polygon.
+    pub fn is_inside(&self) -> bool {
+        match *self {
+            Intersection::Inside(_) => true,
+            _ => false,
+        }
+    }
+}
+
 impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
         ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
         ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
@@ -196,6 +222,15 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
         self.signed_distance_to(&line.origin) / -self.normal.dot(line.dir)
     }
 
+    /// Compute the sum of signed distances to each of the points
+    /// of another polygon. Useful to know the relation of a polygon that
+    /// is a product of a split, and we know it doesn't intersect `self`.
+    pub fn signed_distance_sum_to(&self, other: &Self) -> T {
+        other.points.iter().fold(T::zero(), |sum, p| {
+            sum + self.signed_distance_to(p)
+        })
+    }
+
     /// Check if all the points are indeed placed on the plane defined by
     /// the normal and offset, and the winding order is consistent.
     /// The epsion is specified for the plane distance calculations.
@@ -247,21 +282,21 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
     }
 
     /// Compute the line of intersection with another polygon.
-    pub fn intersect(&self, other: &Self) -> Option<Line<T, U>> {
+    pub fn intersect(&self, other: &Self) -> Intersection<Line<T, U>> {
         if self.are_outside(&other.points) || other.are_outside(&self.points) {
             // one is completely outside the other
-            return None
+            return Intersection::Outside
         }
         let cross_dir = self.normal.cross(other.normal);
         if cross_dir.dot(cross_dir) < T::approx_epsilon() {
             // polygons are co-planar
-            return None
+            return Intersection::Coplanar
         }
         let self_proj = self.project_on(&cross_dir);
         let other_proj = other.project_on(&cross_dir);
         if !self_proj.intersect(&other_proj) {
             // projections on the line don't intersect
-            return None
+            return Intersection::Outside
         }
         // compute any point on the intersection between planes
         // (n1, v) + d1 = 0
@@ -272,7 +307,7 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
         let factor = T::one() / (T::one() - w * w);
         let center = self.normal * ((other.offset * w - self.offset) * factor) -
                      other.normal* ((other.offset - self.offset * w) * factor);
-        Some(Line {
+        Intersection::Inside(Line {
             origin: center,
             dir: cross_dir.normalize(),
         })
@@ -381,16 +416,13 @@ pub trait Splitter<T, U> {
     /// Reset the splitter results.
     fn reset(&mut self);
 
-    /// Get all the accumulated polygons to date.
-    fn get_all(&self) -> &[Polygon<T, U>];
-
     /// Add a new polygon and return a slice of the subdivisions
     /// that avoid collision with any of the previously added polygons.
-    fn add(&mut self, Polygon<T, U>) -> &[Polygon<T, U>];
+    fn add(&mut self, Polygon<T, U>);
 
     /// Sort the produced polygon set by the ascending distance across
-    /// the specified view vector.
-    fn sort(&mut self, TypedPoint3D<T, U>);
+    /// the specified view vector. Return the sorted slice.
+    fn sort(&mut self, TypedPoint3D<T, U>) -> &[Polygon<T, U>];
 
     /// Process a set of polygons at once.
     fn solve(&mut self, input: &[Polygon<T, U>], view: TypedPoint3D<T, U>)
@@ -400,8 +432,7 @@ pub trait Splitter<T, U> {
         for p in input.iter() {
             self.add(p.clone());
         }
-        self.sort(view);
-        self.get_all()
+        self.sort(view)
     }
 }
 
