@@ -3,21 +3,27 @@ extern crate plane_split;
 
 use std::f32::consts::FRAC_PI_4;
 use euclid::{Radians, TypedMatrix4D, TypedPoint2D, TypedPoint3D, TypedSize2D, TypedRect};
-use plane_split::{NaiveSplitter, Polygon, Splitter, _make_grid};
+use plane_split::{BspSplitter, NaiveSplitter, Polygon, Splitter, _make_grid};
 
-#[test]
-fn naive_grid() {
-    let count = 2;
+
+fn grid_impl(count: usize, splitter: &mut Splitter<f32, ()>) {
     let polys = _make_grid(count);
-    let mut splitter = NaiveSplitter::new();
-    for poly in polys {
-        splitter.add(poly);
-    }
-    assert_eq!(splitter.get_all().len(), count + count*count + count*count*count);
+    let result = splitter.solve(&polys, TypedPoint3D::new(0.0, 0.0, 1.0));
+    assert_eq!(result.len(), count + count*count + count*count*count);
 }
 
 #[test]
-fn naive_sort() {
+fn grid_naive() {
+    grid_impl(2, &mut NaiveSplitter::new());
+}
+
+#[test]
+fn grid_bsp() {
+    grid_impl(2, &mut BspSplitter::new());
+}
+
+
+fn sort_impl(splitter: &mut Splitter<f32, ()>) {
     let transform0: TypedMatrix4D<f32, (), ()> =
         TypedMatrix4D::create_rotation(0.0, 1.0, 0.0, Radians::new(-FRAC_PI_4));
     let transform1: TypedMatrix4D<f32, (), ()> =
@@ -32,8 +38,17 @@ fn naive_sort() {
         Polygon::from_transformed_rect(rect, transform2, 2),
     ];
 
-    let mut splitter = NaiveSplitter::new();
-    splitter.solve(&polys, TypedPoint3D::new(0.0, 0.0, -1.0));
-    let ids: Vec<_> = splitter.get_all().iter().map(|poly| poly.anchor).collect();
+    let result = splitter.solve(&polys, TypedPoint3D::new(0.0, 0.0, -1.0));
+    let ids: Vec<_> = result.iter().map(|poly| poly.anchor).collect();
     assert_eq!(&ids, &[2, 1, 0, 1, 2]);
+}
+
+#[test]
+fn sort_naive() {
+    sort_impl(&mut NaiveSplitter::new());
+}
+
+#[test]
+fn sort_bsp() {
+    sort_impl(&mut BspSplitter::new());
 }

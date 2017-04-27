@@ -3,7 +3,7 @@ extern crate plane_split;
 
 use euclid::{Point2D, Radians, TypedPoint2D, TypedPoint3D, TypedRect, TypedSize2D, TypedMatrix4D};
 use euclid::approxeq::ApproxEq;
-use plane_split::{Line, LineProjection, Polygon};
+use plane_split::{Intersection, Line, LineProjection, Polygon};
 
 
 #[test]
@@ -135,7 +135,10 @@ fn intersect() {
     };
     assert!(poly_b.is_valid());
 
-    let intersection = poly_a.intersect(&poly_b).unwrap();
+    let intersection = match poly_a.intersect(&poly_b) {
+        Intersection::Inside(result) => result,
+        _ => panic!("Bad intersection"),
+    };
     assert!(intersection.is_valid());
     // confirm the origin is on both planes
     assert!(poly_a.signed_distance_to(&intersection.origin).approx_eq(&0.0));
@@ -169,8 +172,8 @@ fn intersect() {
     };
     assert!(poly_d.is_valid());
 
-    assert!(poly_a.intersect(&poly_c).is_none());
-    assert!(poly_a.intersect(&poly_d).is_none());
+    assert!(poly_a.intersect(&poly_c).is_outside());
+    assert!(poly_a.intersect(&poly_d).is_outside());
 }
 
 fn test_cut(poly_base: &Polygon<f32, ()>, extra_count: u8, line: Line<f32, ()>) {
