@@ -13,12 +13,15 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
      U> Plane for Polygon<T, U> {
 
     fn cut(&self, mut plane: Self) -> PlaneCut<Self> {
+        debug!("\tCutting anchors {}", plane.anchor);
         let dist = self.signed_distance_sum_to(&plane);
         match self.intersect(&plane) {
             Intersection::Coplanar if dist.approx_eq(&T::zero()) => {
+                debug!("\t\tcoplanar and matching");
                 PlaneCut::Sibling(plane)
             }
             Intersection::Coplanar | Intersection::Outside => {
+                debug!("\t\tcoplanar at {:?}", dist);
                 if dist > T::zero() {
                     PlaneCut::Cut {
                         front: vec![plane],
@@ -43,6 +46,7 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
                         back.push(sub)
                     }
                 }
+                debug!("\t\tinside with {} in front and {} in back", front.len(), back.len());
 
                 PlaneCut::Cut {
                     front: front,
@@ -78,7 +82,8 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
         ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
         ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
         Zero + One + Float,
-     U> Splitter<T, U> for BspSplitter<T, U> {
+     U: fmt::Debug,
+    > Splitter<T, U> for BspSplitter<T, U> {
 
     fn reset(&mut self) {
         self.tree = BspNode::new();
@@ -89,12 +94,14 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
     }
 
     fn sort(&mut self, view: TypedPoint3D<T, U>) -> &[Polygon<T, U>] {
+        //debug!("\t\ttree before sorting {:?}", self.tree);
         let poly = Polygon {
             points: [TypedPoint3D::zero(); 4],
             normal: view,
             offset: T::zero(),
             anchor: 0,
         };
+        self.result.clear();
         self.tree.order(&poly, &mut self.result);
         &self.result
     }

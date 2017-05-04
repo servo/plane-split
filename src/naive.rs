@@ -48,7 +48,7 @@ fn partial_sort_by<T, F>(array: &mut [T], fun: F) where
     F: Fn(&T, &T) -> Ordering,
     T: fmt::Debug,
 {
-    debug!("\nSorting");
+    debug!("Sorting");
     if array.is_empty() {
         return
     }

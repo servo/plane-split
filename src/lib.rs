@@ -358,6 +358,7 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
             None => return (None, None),
         };
         //TODO: can be optimized for when the polygon has a redundant 4th vertex
+        //TODO: can be simplified greatly if only working with triangles
         let (a, b) = (cuts[first].unwrap(), cuts[second].unwrap());
         match second-first {
             2 => {
