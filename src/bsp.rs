@@ -6,15 +6,17 @@ use std::{fmt, ops};
 use {Intersection, Polygon, Splitter};
 
 
-impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
+impl<T, U> Plane for Polygon<T, U> where
+    T: Copy + fmt::Debug + ApproxEq<T> +
         ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
         ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
         Zero + One + Float,
-     U> Plane for Polygon<T, U> {
-
+    U: fmt::Debug,
+{
     fn cut(&self, mut plane: Self) -> PlaneCut<Self> {
-        debug!("\tCutting anchors {}", plane.anchor);
+        debug!("\tCutting anchor {}", plane.anchor);
         let dist = self.signed_distance_sum_to(&plane);
+
         match self.intersect(&plane) {
             Intersection::Coplanar if dist.approx_eq(&T::zero()) => {
                 debug!("\t\tcoplanar and matching");
@@ -46,7 +48,8 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
                         back.push(sub)
                     }
                 }
-                debug!("\t\tinside with {} in front and {} in back", front.len(), back.len());
+                debug!("\t\tcut across {:?} by {} in front and {} in back",
+                    line, front.len(), back.len());
 
                 PlaneCut::Cut {
                     front: front,
@@ -78,13 +81,13 @@ impl<T, U> BspSplitter<T, U> {
     }
 }
 
-impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
+impl<T, U> Splitter<T, U> for BspSplitter<T, U> where
+    T: Copy + fmt::Debug + ApproxEq<T> +
         ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
         ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
         Zero + One + Float,
-     U: fmt::Debug,
-    > Splitter<T, U> for BspSplitter<T, U> {
-
+    U: fmt::Debug,
+{
     fn reset(&mut self) {
         self.tree = BspNode::new();
     }
@@ -97,7 +100,7 @@ impl<T: Copy + fmt::Debug + PartialOrd + ApproxEq<T> +
         //debug!("\t\ttree before sorting {:?}", self.tree);
         let poly = Polygon {
             points: [TypedPoint3D::zero(); 4],
-            normal: view,
+            normal: -view, //Note: BSP `order()` is back to front
             offset: T::zero(),
             anchor: 0,
         };
