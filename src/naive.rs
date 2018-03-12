@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use std::{fmt, ops};
 use std::cmp::Ordering;
 use {Intersection, Line, Polygon, Splitter};
@@ -7,6 +9,7 @@ use num_traits::{Float, One, Zero};
 
 
 /// Naive plane splitter, has at least O(n^2) complexity.
+#[deprecated]
 pub struct NaiveSplitter<T, U> {
     result: Vec<Polygon<T, U>>,
     current: Vec<Polygon<T, U>>,

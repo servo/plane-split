@@ -66,36 +66,6 @@ impl<T, U> Line<T, U> where
     }
 }
 
-/// A convex flat polygon with 4 points, defined by equation:
-/// dot(v, normal) + offset = 0
-#[derive(Debug, PartialEq)]
-pub struct Polygon<T, U> {
-    /// Points making the polygon.
-    pub points: [TypedPoint3D<T, U>; 4],
-    /// Normalized vector perpendicular to the polygon plane.
-    pub normal: TypedVector3D<T, U>,
-    /// Constant offset from the normal plane, specified in the
-    /// direction opposite to the normal.
-    pub offset: T,
-    /// A simple anchoring index to allow association of the
-    /// produced split polygons with the original one.
-    pub anchor: usize,
-}
-
-impl<T: Clone, U> Clone for Polygon<T, U> {
-    fn clone(&self) -> Self {
-        Polygon {
-            points: [self.points[0].clone(),
-                     self.points[1].clone(),
-                     self.points[2].clone(),
-                     self.points[3].clone()],
-            normal: self.normal.clone(),
-            offset: self.offset.clone(),
-            anchor: self.anchor,
-        }
-    }
-}
-
 /// The projection of a `Polygon` on a line.
 pub struct LineProjection<T> {
     /// Projected value of each point in the polygon.
@@ -170,6 +140,39 @@ impl<T> Intersection<T> {
     }
 }
 
+
+/// A convex flat polygon with 4 points, defined by equation:
+/// dot(v, normal) + offset = 0
+#[derive(Debug, PartialEq)]
+pub struct Polygon<T, U> {
+    /// Points making the polygon.
+    pub points: [TypedPoint3D<T, U>; 4],
+    /// Normalized vector perpendicular to the polygon plane.
+    pub normal: TypedVector3D<T, U>,
+    /// Constant offset from the normal plane, specified in the
+    /// direction opposite to the normal.
+    pub offset: T,
+    /// A simple anchoring index to allow association of the
+    /// produced split polygons with the original one.
+    pub anchor: usize,
+}
+
+impl<T: Clone, U> Clone for Polygon<T, U> {
+    fn clone(&self) -> Self {
+        Polygon {
+            points: [
+                self.points[0].clone(),
+                 self.points[1].clone(),
+                 self.points[2].clone(),
+                 self.points[3].clone(),
+            ],
+            normal: self.normal.clone(),
+            offset: self.offset.clone(),
+            anchor: self.anchor,
+        }
+    }
+}
+
 impl<T, U> Polygon<T, U> where
     T: Copy + fmt::Debug + ApproxEq<T> +
         ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
@@ -177,12 +180,34 @@ impl<T, U> Polygon<T, U> where
         Zero + One + Float,
     U: fmt::Debug,
 {
-    /// Construct a polygon from a transformed rectangle.
-    pub fn from_transformed_rect<V>(rect: TypedRect<T, V>,
-                                    transform: TypedTransform3D<T, V, U>,
-                                    anchor: usize)
-                                    -> Polygon<T, U>
-    where T: Trig + ops::Neg<Output=T> {
+    /// Construct a polygon from points that are already transformed.
+    pub fn from_points(
+        points: [TypedPoint3D<T, U>; 4],
+        anchor: usize,
+    ) -> Self {
+        let normal = (points[1] - points[0])
+            .cross(points[2] - points[0])
+            .normalize();
+        let offset = -points[0].to_vector()
+            .dot(normal);
+
+        Polygon {
+            points,
+            normal,
+            offset,
+            anchor,
+        }
+    }
+
+    /// Construct a polygon from a rectangle with 3D transform.
+    pub fn from_transformed_rect<V>(
+        rect: TypedRect<T, V>,
+        transform: TypedTransform3D<T, V, U>,
+        anchor: usize,
+    ) -> Self
+    where
+        T: Trig + ops::Neg<Output=T>,
+    {
         let points = [
             transform.transform_point3d(&rect.origin.to_3d()),
             transform.transform_point3d(&rect.top_right().to_3d()),
@@ -193,17 +218,7 @@ impl<T, U> Polygon<T, U> where
         //Note: this code path could be more efficient if we had inverse-transpose
         //let n4 = transform.transform_point4d(&TypedPoint4D::new(T::zero(), T::zero(), T::one(), T::zero()));
         //let normal = TypedPoint3D::new(n4.x, n4.y, n4.z);
-
-        let normal = (points[1] - points[0]).cross(points[2] - points[0])
-                                            .normalize();
-        let offset = -TypedVector3D::new(transform.m41, transform.m42, transform.m43).dot(normal);
-
-        Polygon {
-            points: points,
-            normal: normal,
-            offset: offset,
-            anchor: anchor,
-        }
+        Self::from_points(points, anchor)
     }
 
     /// Bring a point into the local coordinate space, returning
@@ -332,8 +347,7 @@ impl<T, U> Polygon<T, U> where
 
     /// Split the polygon along the specified `Line`. Will do nothing if the line
     /// doesn't belong to the polygon plane.
-    pub fn split(&mut self, line: &Line<T, U>)
-                 -> (Option<Polygon<T, U>>, Option<Polygon<T, U>>) {
+    pub fn split(&mut self, line: &Line<T, U>) -> (Option<Self>, Option<Self>) {
         debug!("\tSplitting");
         // check if the cut is within the polygon plane first
         if !is_zero(self.normal.dot(line.dir)) ||
@@ -461,6 +475,7 @@ pub trait Splitter<T, U> {
 
 /// Helper method used for benchmarks and tests.
 /// Constructs a 3D grid of polygons.
+#[doc(hidden)]
 pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
     let mut polys: Vec<Polygon<f32, ()>> = Vec::with_capacity(count*3);
     let len = count as f32;
