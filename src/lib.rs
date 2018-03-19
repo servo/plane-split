@@ -17,7 +17,6 @@ extern crate log;
 extern crate num_traits;
 
 mod bsp;
-mod naive;
 
 use std::{fmt, mem, ops};
 use euclid::{Point2D, TypedTransform3D, TypedPoint3D, TypedVector3D, TypedRect};
@@ -26,7 +25,6 @@ use euclid::Trig;
 use num_traits::{Float, One, Zero};
 
 pub use self::bsp::BspSplitter;
-pub use self::naive::NaiveSplitter;
 
 
 fn is_zero<T>(value: T) -> bool where
@@ -140,18 +138,104 @@ impl<T> Intersection<T> {
     }
 }
 
-
-/// A convex flat polygon with 4 points, defined by equation:
+/// An infinite plane in 3D space, defined by equation:
 /// dot(v, normal) + offset = 0
 #[derive(Debug, PartialEq)]
-pub struct Polygon<T, U> {
-    /// Points making the polygon.
-    pub points: [TypedPoint3D<T, U>; 4],
-    /// Normalized vector perpendicular to the polygon plane.
+pub struct Plane<T, U> {
+    /// Normalized vector perpendicular to the plane.
     pub normal: TypedVector3D<T, U>,
     /// Constant offset from the normal plane, specified in the
     /// direction opposite to the normal.
     pub offset: T,
+}
+
+impl<T: Clone, U> Clone for Plane<T, U> {
+    fn clone(&self) -> Self {
+        Plane {
+            normal: self.normal.clone(),
+            offset: self.offset.clone(),
+        }
+    }
+}
+
+impl<
+    T: Copy + Zero + One + Float + ApproxEq<T> +
+        ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
+        ops::Mul<T, Output=T> + ops::Div<T, Output=T>,
+    U,
+> Plane<T, U> {
+    /// Check if this plane contains another one.
+    pub fn contains(&self, other: &Self) -> bool {
+        //TODO: actually check for inside/outside
+        self.normal == other.normal && self.offset == other.offset
+    }
+
+    /// Return the signed distance from this plane to a point.
+    /// The distance is negative if the point is on the other side of the plane
+    /// from the direction of the normal.
+    pub fn signed_distance_to(&self, point: &TypedPoint3D<T, U>) -> T {
+        point.to_vector().dot(self.normal) + self.offset
+    }
+
+    /// Compute the distance across the line to the plane plane,
+    /// starting from the line origin.
+    pub fn distance_to_line(&self, line: &Line<T, U>) -> T
+    where T: ops::Neg<Output=T> {
+        self.signed_distance_to(&line.origin) / -self.normal.dot(line.dir)
+    }
+
+    /// Compute the sum of signed distances to each of the points
+    /// of another plane. Useful to know the relation of a plane that
+    /// is a product of a split, and we know it doesn't intersect `self`.
+    pub fn signed_distance_sum_to(&self, poly: &Polygon<T, U>) -> T {
+        poly.points.iter().fold(T::zero(), |sum, p| {
+            sum + self.signed_distance_to(p)
+        })
+    }
+
+    /// Check if a convex shape defined by a set of points is completely
+    /// outside of this plane. Merely touching the surface is not
+    /// considered an intersection.
+    pub fn are_outside(&self, points: &[TypedPoint3D<T, U>]) -> bool {
+        let d0 = self.signed_distance_to(&points[0]);
+        points[1..]
+            .iter()
+            .all(|p| self.signed_distance_to(p) * d0 > T::zero())
+    }
+
+    /// Compute the line of intersection with another plane.
+    pub fn intersect(&self, other: &Self) -> Option<Line<T, U>> {
+        let cross_dir = self.normal.cross(other.normal);
+        if cross_dir.dot(cross_dir) < T::approx_epsilon() {
+            return None
+        }
+
+        // compute any point on the intersection between planes
+        // (n1, v) + d1 = 0
+        // (n2, v) + d2 = 0
+        // v = a*n1/w + b*n2/w; w = (n1, n2)
+        // v = (d2*w - d1) / (1 - w*w) * n1 - (d2 - d1*w) / (1 - w*w) * n2
+        let w = self.normal.dot(other.normal);
+        let factor = T::one() / (T::one() - w * w);
+        let origin = TypedPoint3D::origin() +
+            self.normal * ((other.offset * w - self.offset) * factor) -
+            other.normal* ((other.offset - self.offset * w) * factor);
+
+        Some(Line {
+            origin,
+            dir: cross_dir.normalize(),
+        })
+    }
+}
+
+
+/// A convex polygon with 4 points lying on a plane.
+#[derive(Debug, PartialEq)]
+pub struct Polygon<T, U> {
+    /// Points making the polygon.
+    pub points: [TypedPoint3D<T, U>; 4],
+    /// A plane describing polygon orientation.
+    pub plane: Plane<T, U>,
     /// A simple anchoring index to allow association of the
     /// produced split polygons with the original one.
     pub anchor: usize,
@@ -166,8 +250,7 @@ impl<T: Clone, U> Clone for Polygon<T, U> {
                  self.points[2].clone(),
                  self.points[3].clone(),
             ],
-            normal: self.normal.clone(),
-            offset: self.offset.clone(),
+            plane: self.plane.clone(),
             anchor: self.anchor,
         }
     }
@@ -193,8 +276,10 @@ impl<T, U> Polygon<T, U> where
 
         Polygon {
             points,
-            normal,
-            offset,
+            plane: Plane {
+                normal,
+                offset,
+            },
             anchor,
         }
     }
@@ -242,59 +327,32 @@ impl<T, U> Polygon<T, U> where
         Point2D::new(x, y) / denom
     }
 
-    /// Return the signed distance from this polygon to a point.
-    /// The distance is negative if the point is on the other side of the polygon
-    /// from the direction of the normal.
-    pub fn signed_distance_to(&self, point: &TypedPoint3D<T, U>) -> T {
-        point.to_vector().dot(self.normal) + self.offset
-    }
-
-    /// Compute the distance across the line to the polygon plane,
-    /// starting from the line origin.
-    pub fn distance_to_line(&self, line: &Line<T, U>) -> T
-    where T: ops::Neg<Output=T> {
-        self.signed_distance_to(&line.origin) / -self.normal.dot(line.dir)
-    }
-
-    /// Compute the sum of signed distances to each of the points
-    /// of another polygon. Useful to know the relation of a polygon that
-    /// is a product of a split, and we know it doesn't intersect `self`.
-    pub fn signed_distance_sum_to(&self, other: &Self) -> T {
-        other.points.iter().fold(T::zero(), |sum, p| {
-            sum + self.signed_distance_to(p)
-        })
-    }
-
     /// Check if all the points are indeed placed on the plane defined by
     /// the normal and offset, and the winding order is consistent.
     pub fn is_valid(&self) -> bool {
-        let is_planar = self.points.iter()
-                                   .all(|p| is_zero(self.signed_distance_to(p)));
-        let edges = [self.points[1] - self.points[0],
-                     self.points[2] - self.points[1],
-                     self.points[3] - self.points[2],
-                     self.points[0] - self.points[3]];
+        let is_planar = self.points
+            .iter()
+            .all(|p| is_zero(self.plane.signed_distance_to(p)));
+        let edges = [
+            self.points[1] - self.points[0],
+            self.points[2] - self.points[1],
+            self.points[3] - self.points[2],
+            self.points[0] - self.points[3],
+        ];
         let anchor = edges[3].cross(edges[0]);
-        let is_winding = edges.iter()
-                              .zip(edges[1..].iter())
-                              .all(|(a, &b)| a.cross(b).dot(anchor) >= T::zero());
+        let is_winding = edges
+            .iter()
+            .zip(edges[1..].iter())
+            .all(|(a, &b)| a.cross(b).dot(anchor) >= T::zero());
         is_planar && is_winding
-    }
-
-    /// Check if a convex shape defined by a set of points is completely
-    /// outside of this polygon. Merely touching the surface is not
-    /// considered an intersection.
-    pub fn are_outside(&self, points: &[TypedPoint3D<T, U>]) -> bool {
-        let d0 = self.signed_distance_to(&points[0]);
-        points[1..].iter()
-                   .all(|p| self.signed_distance_to(p) * d0 > T::zero())
     }
 
     /// Check if this polygon contains another one.
     pub fn contains(&self, other: &Self) -> bool {
         //TODO: actually check for inside/outside
-        self.normal == other.normal && self.offset == other.offset
+        self.plane.contains(&other.plane)
     }
+
 
     /// Project this polygon onto a 3D vector, returning a line projection.
     /// Note: we can think of it as a projection to a ray placed at the origin.
@@ -309,40 +367,44 @@ impl<T, U> Polygon<T, U> where
         }
     }
 
+    /// Compute the line of intersection with an infinite plane.
+    pub fn intersect_plane(&self, other: &Plane<T, U>) -> Intersection<Line<T, U>> {
+        if other.are_outside(&self.points) {
+            debug!("\t\tOutside of the plane");
+            return Intersection::Outside
+        }
+        match self.plane.intersect(&other) {
+            Some(line) => Intersection::Inside(line),
+            None => {
+                debug!("\t\tCoplanar");
+                Intersection::Coplanar
+            }
+        }
+    }
+
     /// Compute the line of intersection with another polygon.
     pub fn intersect(&self, other: &Self) -> Intersection<Line<T, U>> {
-        if self.are_outside(&other.points) || other.are_outside(&self.points) {
-            // one is completely outside the other
-            debug!("\t\tOutside");
+        if self.plane.are_outside(&other.points) || other.plane.are_outside(&self.points) {
+            debug!("\t\tOne is completely outside of the other");
             return Intersection::Outside
         }
-        let cross_dir = self.normal.cross(other.normal);
-        if cross_dir.dot(cross_dir) < T::approx_epsilon() {
-            // polygons are co-planar
-            debug!("\t\tCoplanar");
-            return Intersection::Coplanar
+        match self.plane.intersect(&other.plane) {
+            Some(line) => {
+                let self_proj = self.project_on(&line.dir);
+                let other_proj = other.project_on(&line.dir);
+                if self_proj.intersect(&other_proj) {
+                    Intersection::Inside(line)
+                } else {
+                    // projections on the line don't intersect
+                    debug!("\t\tProjection is outside");
+                    Intersection::Outside
+                }
+            }
+            None => {
+                debug!("\t\tCoplanar");
+                Intersection::Coplanar
+            }
         }
-        let self_proj = self.project_on(&cross_dir);
-        let other_proj = other.project_on(&cross_dir);
-        if !self_proj.intersect(&other_proj) {
-            // projections on the line don't intersect
-            debug!("\t\tProjection outside");
-            return Intersection::Outside
-        }
-        // compute any point on the intersection between planes
-        // (n1, v) + d1 = 0
-        // (n2, v) + d2 = 0
-        // v = a*n1/w + b*n2/w; w = (n1, n2)
-        // v = (d2*w - d1) / (1 - w*w) * n1 - (d2 - d1*w) / (1 - w*w) * n2
-        let w = self.normal.dot(other.normal);
-        let factor = T::one() / (T::one() - w * w);
-        let center = TypedPoint3D::origin() +
-                     self.normal * ((other.offset * w - self.offset) * factor) -
-                     other.normal* ((other.offset - self.offset * w) * factor);
-        Intersection::Inside(Line {
-            origin: center,
-            dir: cross_dir.normalize(),
-        })
     }
 
     /// Split the polygon along the specified `Line`. Will do nothing if the line
@@ -350,19 +412,21 @@ impl<T, U> Polygon<T, U> where
     pub fn split(&mut self, line: &Line<T, U>) -> (Option<Self>, Option<Self>) {
         debug!("\tSplitting");
         // check if the cut is within the polygon plane first
-        if !is_zero(self.normal.dot(line.dir)) ||
-           !is_zero(self.signed_distance_to(&line.origin)) {
+        if !is_zero(self.plane.normal.dot(line.dir)) ||
+           !is_zero(self.plane.signed_distance_to(&line.origin)) {
             debug!("\t\tDoes not belong to the plane, normal dot={:?}, origin distance={:?}",
-                self.normal.dot(line.dir), self.signed_distance_to(&line.origin));
+                self.plane.normal.dot(line.dir), self.plane.signed_distance_to(&line.origin));
             return (None, None)
         }
         // compute the intersection points for each edge
         let mut cuts = [None; 4];
-        for ((&b, &a), cut) in self.points.iter()
-                                          .cycle()
-                                          .skip(1)
-                                          .zip(self.points.iter())
-                                          .zip(cuts.iter_mut()) {
+        for ((&b, &a), cut) in self.points
+            .iter()
+            .cycle()
+            .skip(1)
+            .zip(self.points.iter())
+            .zip(cuts.iter_mut())
+        {
             // intersecting line segment [a, b] with `line`
             //a + (b-a) * t = r + k * d
             //(a, d) + t * (b-a, d) - (r, d) = k
@@ -486,8 +550,10 @@ pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
             TypedPoint3D::new(len, i as f32, len),
             TypedPoint3D::new(0.0, i as f32, len),
         ],
-        normal: TypedVector3D::new(0.0, 1.0, 0.0),
-        offset: -(i as f32),
+        plane: Plane {
+            normal: TypedVector3D::new(0.0, 1.0, 0.0),
+            offset: -(i as f32),
+        },
         anchor: 0,
     }));
     polys.extend((0 .. count).map(|i| Polygon {
@@ -497,8 +563,10 @@ pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
             TypedPoint3D::new(i as f32, len, len),
             TypedPoint3D::new(i as f32, 0.0, len),
         ],
-        normal: TypedVector3D::new(1.0, 0.0, 0.0),
-        offset: -(i as f32),
+        plane: Plane {
+            normal: TypedVector3D::new(1.0, 0.0, 0.0),
+            offset: -(i as f32),
+        },
         anchor: 0,
     }));
     polys.extend((0 .. count).map(|i| Polygon {
@@ -508,8 +576,10 @@ pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
             TypedPoint3D::new(len, len, i as f32),
             TypedPoint3D::new(0.0, len, i as f32),
         ],
-        normal: TypedVector3D::new(0.0, 0.0, 1.0),
-        offset: -(i as f32),
+        plane: Plane {
+            normal: TypedVector3D::new(0.0, 0.0, 1.0),
+            offset: -(i as f32),
+        },
         anchor: 0,
     }));
     polys
