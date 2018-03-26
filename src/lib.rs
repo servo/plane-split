@@ -540,7 +540,7 @@ pub trait Splitter<T, U> {
 /// Helper method used for benchmarks and tests.
 /// Constructs a 3D grid of polygons.
 #[doc(hidden)]
-pub fn _make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
+pub fn make_grid(count: usize) -> Vec<Polygon<f32, ()>> {
     let mut polys: Vec<Polygon<f32, ()>> = Vec::with_capacity(count*3);
     let len = count as f32;
     polys.extend((0 .. count).map(|i| Polygon {
