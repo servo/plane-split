@@ -3,11 +3,11 @@ extern crate plane_split;
 
 use std::f32::consts::FRAC_PI_4;
 use euclid::{Angle, TypedTransform3D, TypedRect, vec3};
-use plane_split::{BspSplitter, Polygon, Splitter, _make_grid};
+use plane_split::{BspSplitter, Polygon, Splitter, make_grid};
 
 
 fn grid_impl(count: usize, splitter: &mut Splitter<f32, ()>) {
-    let polys = _make_grid(count);
+    let polys = make_grid(count);
     let result = splitter.solve(&polys, vec3(0.0, 0.0, 1.0));
     assert_eq!(result.len(), count + count*count + count*count*count);
 }
