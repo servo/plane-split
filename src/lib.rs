@@ -69,6 +69,8 @@ impl<T, U> Line<T, U> where
 
 /// An infinite plane in 3D space, defined by equation:
 /// dot(v, normal) + offset = 0
+/// When used for plane splitting, it's defining a hemisphere
+/// with equation "dot(v, normal) + offset > 0".
 #[derive(Debug, PartialEq)]
 pub struct Plane<T, U> {
     /// Normalized vector perpendicular to the plane.
