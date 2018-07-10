@@ -181,6 +181,27 @@ impl<T, U> Polygon<T, U> where
         Point2D::new(x, y) / denom
     }
 
+    /// Transform a polygon by an affine transform (preserving straight lines).
+    pub fn transform<V>(
+        &self, transform: TypedTransform3D<T, U, V>
+    ) -> Option<Polygon<T, V>>
+    where
+        T: Trig,
+        V: fmt::Debug,
+    {
+        let mut points = [TypedPoint3D::origin(); 4];
+        for (out, point) in points.iter_mut().zip(self.points.iter()) {
+            let mut homo = transform.transform_point3d_homogeneous(point);
+            homo.w = homo.w.max(T::approx_epsilon());
+            *out = homo.to_point3d()?;
+        }
+
+        //Note: this code path could be more efficient if we had inverse-transpose
+        //let n4 = transform.transform_point4d(&TypedPoint4D::new(T::zero(), T::zero(), T::one(), T::zero()));
+        //let normal = TypedPoint3D::new(n4.x, n4.y, n4.z);
+        Some(Polygon::from_points(points, self.anchor))
+    }
+
     /// Check if all the points are indeed placed on the plane defined by
     /// the normal and offset, and the winding order is consistent.
     pub fn is_valid(&self) -> bool {
