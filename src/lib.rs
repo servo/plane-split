@@ -20,7 +20,7 @@ mod bsp;
 mod polygon;
 
 use std::{fmt, mem, ops};
-use euclid::{TypedPoint3D, TypedVector3D};
+use euclid::{TypedPoint3D, TypedRect, TypedScale, TypedTransform3D, TypedVector3D};
 use euclid::approxeq::ApproxEq;
 use num_traits::{Float, One, Zero};
 
@@ -95,6 +95,15 @@ impl<
         ops::Mul<T, Output=T> + ops::Div<T, Output=T>,
     U,
 > Plane<T, U> {
+    /// Construct a new plane from unnormalized equation.
+    pub fn from_unnormalized(normal: TypedVector3D<T, U>, offset: T) -> Self {
+        let kf = T::one() / normal.length();
+        Plane {
+            normal: normal * TypedScale::new(kf),
+            offset: offset * kf,
+        }
+    }
+
     /// Check if this plane contains another one.
     pub fn contains(&self, other: &Self) -> bool {
         //TODO: actually check for inside/outside
@@ -169,6 +178,69 @@ pub trait Splitter<T, U> {
     /// Add a new polygon and return a slice of the subdivisions
     /// that avoid collision with any of the previously added polygons.
     fn add(&mut self, polygon: Polygon<T, U>);
+
+    /// Add a transformed rectangles.
+    fn add_transformed_rect<V>(
+        &mut self,
+        rect: TypedRect<T, V>,
+        t: TypedTransform3D<T, V, U>,
+        bounds: TypedRect<T, U>,
+        anchor: usize,
+    ) -> Option<()>
+    where
+        T: Copy + fmt::Debug + ApproxEq<T> +
+            ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
+            ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
+            euclid::Trig + Zero + One + Float,
+        U: fmt::Debug,
+        V: fmt::Debug,
+    {
+        let mut clipper = Clipper::new();
+        let mw = TypedVector3D::new(t.m14, t.m24, t.m34);
+        clipper.add(Plane::from_unnormalized(mw, t.m44));
+
+        let mx = TypedVector3D::new(t.m11, t.m21, t.m31);
+        let left = bounds.origin.x;
+        clipper.add(Plane::from_unnormalized(
+            mx - mw * TypedScale::new(left),
+            t.m41 - t.m44 * left,
+        ));
+        let right = bounds.origin.x + bounds.size.width;
+        clipper.add(Plane::from_unnormalized(
+            mw * TypedScale::new(right) - mx,
+            t.m44 * right - t.m41,
+        ));
+
+        let my = TypedVector3D::new(t.m12, t.m22, t.m32);
+        let top = bounds.origin.y;
+        clipper.add(Plane::from_unnormalized(
+            my - mw * TypedScale::new(top),
+            t.m42 - t.m44 * top,
+        ));
+        let bottom = bounds.origin.y + bounds.size.height;
+        clipper.add(Plane::from_unnormalized(
+            mw * TypedScale::new(bottom) - my,
+            t.m44 * bottom - t.m42,
+        ));
+
+        let polygon = Polygon::from_points(
+            [
+                rect.origin.to_3d(),
+                rect.top_right().to_3d(),
+                rect.bottom_left().to_3d(),
+                rect.bottom_right().to_3d(),
+            ],
+            anchor,
+        );
+        debug!("crossing detected for poly {:?}", polygon);
+        let results = clipper.clip(polygon);
+        debug!("clip results: {:?}", results);
+        for local_poly in results {
+            self.add(local_poly.transform(t)?);
+        }
+        //TODO
+        Some(())
+    }
 
     /// Sort the produced polygon set by the ascending distance across
     /// the specified view vector. Return the sorted slice.
