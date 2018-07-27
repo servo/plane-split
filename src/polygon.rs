@@ -138,6 +138,19 @@ impl<T, U> Polygon<T, U> where
         }
     }
 
+    /// Construct a polygon from a non-transformed rectangle.
+    pub fn from_rect(rect: TypedRect<T, U>, anchor: usize) -> Self {
+        Self::from_points(
+            [
+                rect.origin.to_3d(),
+                rect.top_right().to_3d(),
+                rect.bottom_right().to_3d(),
+                rect.bottom_left().to_3d(),
+            ],
+            anchor,
+        )
+    }
+
     /// Construct a polygon from a rectangle with 3D transform.
     pub fn from_transformed_rect<V>(
         rect: TypedRect<T, V>,
