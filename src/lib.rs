@@ -179,69 +179,6 @@ pub trait Splitter<T, U> {
     /// that avoid collision with any of the previously added polygons.
     fn add(&mut self, polygon: Polygon<T, U>);
 
-    /// Add a transformed rectangles.
-    fn add_transformed_rect<V>(
-        &mut self,
-        rect: TypedRect<T, V>,
-        t: TypedTransform3D<T, V, U>,
-        bounds: TypedRect<T, U>,
-        anchor: usize,
-    ) -> Option<()>
-    where
-        T: Copy + fmt::Debug + ApproxEq<T> +
-            ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
-            ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
-            euclid::Trig + Zero + One + Float,
-        U: fmt::Debug,
-        V: fmt::Debug,
-    {
-        let mut clipper = Clipper::new();
-        let mw = TypedVector3D::new(t.m14, t.m24, t.m34);
-        clipper.add(Plane::from_unnormalized(mw, t.m44));
-
-        let mx = TypedVector3D::new(t.m11, t.m21, t.m31);
-        let left = bounds.origin.x;
-        clipper.add(Plane::from_unnormalized(
-            mx - mw * TypedScale::new(left),
-            t.m41 - t.m44 * left,
-        ));
-        let right = bounds.origin.x + bounds.size.width;
-        clipper.add(Plane::from_unnormalized(
-            mw * TypedScale::new(right) - mx,
-            t.m44 * right - t.m41,
-        ));
-
-        let my = TypedVector3D::new(t.m12, t.m22, t.m32);
-        let top = bounds.origin.y;
-        clipper.add(Plane::from_unnormalized(
-            my - mw * TypedScale::new(top),
-            t.m42 - t.m44 * top,
-        ));
-        let bottom = bounds.origin.y + bounds.size.height;
-        clipper.add(Plane::from_unnormalized(
-            mw * TypedScale::new(bottom) - my,
-            t.m44 * bottom - t.m42,
-        ));
-
-        let polygon = Polygon::from_points(
-            [
-                rect.origin.to_3d(),
-                rect.top_right().to_3d(),
-                rect.bottom_left().to_3d(),
-                rect.bottom_right().to_3d(),
-            ],
-            anchor,
-        );
-        debug!("crossing detected for poly {:?}", polygon);
-        let results = clipper.clip(polygon);
-        debug!("clip results: {:?}", results);
-        for local_poly in results {
-            self.add(local_poly.transform(t)?);
-        }
-        //TODO
-        Some(())
-    }
-
     /// Sort the produced polygon set by the ascending distance across
     /// the specified view vector. Return the sorted slice.
     fn sort(&mut self, view: TypedVector3D<T, U>) -> &[Polygon<T, U>];
@@ -264,7 +201,6 @@ pub trait Splitter<T, U> {
     }
 }
 
-
 /// A helper object to clip polygons by a number of planes.
 #[derive(Debug)]
 pub struct Clipper<T, U> {
@@ -286,6 +222,49 @@ impl<
             clips: Vec::new(),
             results: Vec::new(),
             temp: Vec::new(),
+        }
+    }
+
+    /// Reset the clipper internals, but preserve the allocation.
+    pub fn reset(&mut self) {
+        self.clips.clear();
+    }
+
+    /// Add a set of planes that define the frustum for a given transformation.
+    pub fn add_frustum<V>(
+        &mut self,
+        t: TypedTransform3D<T, U, V>,
+        bounds: Option<TypedRect<T, V>>,
+    ) {
+        //Note: this is not the near plane, but the positive hemisphere
+        // in homogeneous space.
+        let mw = TypedVector3D::new(t.m14, t.m24, t.m34);
+        self.add(Plane::from_unnormalized(mw, t.m44));
+
+        if let Some(bounds) = bounds {
+            let mx = TypedVector3D::new(t.m11, t.m21, t.m31);
+            let left = bounds.origin.x;
+            self.add(Plane::from_unnormalized(
+                mx - mw * TypedScale::new(left),
+                t.m41 - t.m44 * left,
+            ));
+            let right = bounds.origin.x + bounds.size.width;
+            self.add(Plane::from_unnormalized(
+                mw * TypedScale::new(right) - mx,
+                t.m44 * right - t.m41,
+            ));
+
+            let my = TypedVector3D::new(t.m12, t.m22, t.m32);
+            let top = bounds.origin.y;
+            self.add(Plane::from_unnormalized(
+                my - mw * TypedScale::new(top),
+                t.m42 - t.m44 * top,
+            ));
+            let bottom = bounds.origin.y + bounds.size.height;
+            self.add(Plane::from_unnormalized(
+                mw * TypedScale::new(bottom) - my,
+                t.m44 * bottom - t.m42,
+            ));
         }
     }
 
@@ -322,6 +301,30 @@ impl<
         }
 
         &self.results
+    }
+
+    /// Clip the primitive with the frustum of the specified transformation,
+    /// returning a sequence of polygons in the transformed space.
+    pub fn clip_transformed<'a, V>(
+        &'a mut self,
+        polygon: Polygon<T, U>,
+        transform: TypedTransform3D<T, U, V>,
+        bounds: Option<TypedRect<T, V>>,
+    ) -> impl 'a + Iterator<Item = Polygon<T, V>>
+    where
+        T: euclid::Trig,
+        V: 'a + fmt::Debug,
+    {
+        let num_planes = if bounds.is_some() {5} else {1};
+        self.add_frustum(transform, bounds);
+        self.clip(polygon);
+        // remove the frustum planes
+        for _ in 0 .. num_planes {
+            self.clips.pop();
+        }
+        self.results
+            .drain(..)
+            .map(move |poly| poly.transform(transform).unwrap())
     }
 }
 
