@@ -1,10 +1,11 @@
 use {Line, Plane, is_zero};
 
-use std::{fmt, mem, ops};
 use euclid::{Point2D, TypedTransform3D, TypedPoint3D, TypedVector3D, TypedRect};
 use euclid::approxeq::ApproxEq;
 use euclid::Trig;
 use num_traits::{Float, One, Zero};
+
+use std::{fmt, mem, ops};
 
 
 /// The projection of a `Polygon` on a line.
