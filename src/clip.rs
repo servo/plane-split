@@ -39,7 +39,7 @@ impl<
     /// Add a set of planes that define the frustum for a given transformation.
     pub fn add_frustum<V>(
         &mut self,
-        t: TypedTransform3D<T, U, V>,
+        t: &TypedTransform3D<T, U, V>,
         bounds: Option<TypedRect<T, V>>,
     ) {
         //Note: this is not the near plane, but the positive hemisphere
@@ -115,7 +115,7 @@ impl<
     pub fn clip_transformed<'a, V>(
         &'a mut self,
         polygon: Polygon<T, U>,
-        transform: TypedTransform3D<T, U, V>,
+        transform: &'a TypedTransform3D<T, U, V>,
         bounds: Option<TypedRect<T, V>>,
     ) -> impl 'a + Iterator<Item = Polygon<T, V>>
     where
