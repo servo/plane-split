@@ -197,7 +197,7 @@ impl<T, U> Polygon<T, U> where
 
     /// Transform a polygon by an affine transform (preserving straight lines).
     pub fn transform<V>(
-        &self, transform: TypedTransform3D<T, U, V>
+        &self, transform: &TypedTransform3D<T, U, V>
     ) -> Option<Polygon<T, V>>
     where
         T: Trig,

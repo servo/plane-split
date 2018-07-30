@@ -10,7 +10,7 @@ use std::f32::consts::FRAC_PI_4;
 
 #[test]
 fn clip_in() {
-    let plane: Plane<f32, ()> = Plane::from_unnormalized(vec3(1.0, 0.0, 1.0), 20.0);
+    let plane: Plane<f32, ()> = Plane::from_unnormalized(vec3(1.0, 0.0, 1.0), 20.0).unwrap();
     let mut clipper = Clipper::new();
     clipper.add(plane);
 
@@ -28,7 +28,7 @@ fn clip_in() {
 
 #[test]
 fn clip_out() {
-    let plane: Plane<f32, ()> = Plane::from_unnormalized(vec3(1.0, 0.0, 1.0), -20.0);
+    let plane: Plane<f32, ()> = Plane::from_unnormalized(vec3(1.0, 0.0, 1.0), -20.0).unwrap();
     let mut clipper = Clipper::new();
     clipper.add(plane);
 
@@ -65,7 +65,7 @@ fn clip_parallel() {
 
 #[test]
 fn clip_repeat() {
-    let plane: Plane<f32, ()> = Plane::from_unnormalized(vec3(1.0, 0.0, 1.0), 0.0);;
+    let plane: Plane<f32, ()> = Plane::from_unnormalized(vec3(1.0, 0.0, 1.0), 0.0).unwrap();
     let mut clipper = Clipper::new();
     clipper.add(plane.clone());
     clipper.add(plane.clone());
@@ -95,7 +95,7 @@ fn clip_transformed() {
     let bounds: TypedRect<f32, ()> = rect(-1.0, -1.0, 2.0, 2.0);
 
     let mut clipper = Clipper::new();
-    let results = clipper.clip_transformed(polygon, transform, Some(bounds));
+    let results = clipper.clip_transformed(polygon, &transform, Some(bounds));
     // iterating enforces the transformation checks/unwraps
     assert_ne!(0, results.count());
 }
