@@ -164,7 +164,11 @@ impl<
         // v = a*n1/w + b*n2/w; w = (n1, n2)
         // v = (d2*w - d1) / (1 - w*w) * n1 - (d2 - d1*w) / (1 - w*w) * n2
         let w = self.normal.dot(other.normal);
-        let factor = T::one() / (T::one() - w * w);
+        let divisor = T::one() - w * w;
+        if divisor < T::approx_epsilon() {
+            return None
+        }
+        let factor = T::one() / divisor;
         let origin = TypedPoint3D::origin() +
             self.normal * ((other.offset * w - self.offset) * factor) -
             other.normal* ((other.offset - self.offset * w) * factor);
