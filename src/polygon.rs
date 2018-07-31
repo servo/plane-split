@@ -123,9 +123,24 @@ impl<T, U> Polygon<T, U> where
         points: [TypedPoint3D<T, U>; 4],
         anchor: usize,
     ) -> Self {
-        let normal = (points[1] - points[0])
-            .cross(points[2] - points[0])
-            .normalize();
+        let edge1 = points[1] - points[0];
+        let edge2 = points[2] - points[0];
+        let edge3 = points[3] - points[0];
+
+        // one of them can be zero for redundant polygons produced by plane splitting
+        //Note: this would be nicer if we used triangles instead of quads in the first place...
+        // see https://github.com/servo/plane-split/issues/17
+        debug_assert!(edge2.square_length() > T::approx_epsilon());
+        let normal_rough1 = edge1.cross(edge2);
+        let normal_rough2 = edge2.cross(edge3);
+        let square_length1 = normal_rough1.square_length();
+        let square_length2 = normal_rough2.square_length();
+        let normal = if square_length1 > square_length2 {
+            normal_rough1 / square_length1.sqrt()
+        } else {
+            normal_rough2 / square_length2.sqrt()
+        };
+
         let offset = -points[0].to_vector()
             .dot(normal);
 
