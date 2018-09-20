@@ -161,15 +161,19 @@ impl<T, U> Polygon<T, U> where
 
     /// Construct a polygon from a non-transformed rectangle.
     pub fn from_rect(rect: TypedRect<T, U>, anchor: usize) -> Self {
-        Self::from_points(
-            [
+        Polygon {
+            points: [
                 rect.origin.to_3d(),
                 rect.top_right().to_3d(),
                 rect.bottom_right().to_3d(),
                 rect.bottom_left().to_3d(),
             ],
+            plane: Plane {
+                normal: TypedVector3D::new(T::zero(), T::zero(), T::one()),
+                offset: T::zero(),
+            },
             anchor,
-        ).unwrap()
+        }
     }
 
     /// Construct a polygon from a rectangle with 3D transform.
