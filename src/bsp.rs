@@ -15,47 +15,49 @@ impl<T, U> BspPlane for Polygon<T, U> where
         Zero + One + Float,
     U: fmt::Debug,
 {
-    fn cut(&self, mut plane: Self) -> PlaneCut<Self> {
-        debug!("\tCutting anchor {}", plane.anchor);
-        let dist = self.plane.signed_distance_sum_to(&plane);
+    fn cut(&self, mut poly: Self) -> PlaneCut<Self> {
+        debug!("\tCutting anchor {} by {}", poly.anchor, self.anchor);
+        trace!("\t\tbase {:?}", self.plane);
+        let dist = self.plane.signed_distance_sum_to(&poly);
 
-        match self.intersect(&plane) {
+        match self.intersect(&poly) {
             Intersection::Coplanar if dist.approx_eq(&T::zero()) => {
-                debug!("\t\tCoplanar and matching");
-                PlaneCut::Sibling(plane)
+                debug!("\t\tCoplanar and matching (dist = {:?})", dist);
+                PlaneCut::Sibling(poly)
             }
             Intersection::Coplanar | Intersection::Outside => {
                 debug!("\t\tCoplanar at {:?}", dist);
                 if dist > T::zero() {
                     PlaneCut::Cut {
-                        front: vec![plane],
+                        front: vec![poly],
                         back: vec![],
                     }
                 } else {
                     PlaneCut::Cut {
                         front: vec![],
-                        back: vec![plane],
+                        back: vec![poly],
                     }
                 }
             }
             Intersection::Inside(line) => {
-                let (res_add1, res_add2) = plane.split(&line);
+                debug!("\t\tCut across {:?}", line);
+                let (res_add1, res_add2) = poly.split(&line);
                 let mut front = Vec::new();
                 let mut back = Vec::new();
 
-                for sub in iter::once(plane)
+                for sub in iter::once(poly)
                     .chain(res_add1)
                     .chain(res_add2)
                     .filter(|p| !p.is_empty())
                 {
                     if self.plane.signed_distance_sum_to(&sub) > T::zero() {
+                        trace!("\t\t\tfront: {:?}", sub);
                         front.push(sub)
                     } else {
+                        trace!("\t\t\tback: {:?}", sub);
                         back.push(sub)
                     }
                 }
-                debug!("\t\tCut across {:?} by {} in front and {} in back",
-                    line, front.len(), back.len());
 
                 PlaneCut::Cut {
                     front,
