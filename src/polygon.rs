@@ -3,6 +3,8 @@ use {Line, Plane, is_zero};
 use euclid::{Point2D, TypedTransform3D, TypedPoint3D, TypedVector3D, TypedRect};
 use euclid::approxeq::ApproxEq;
 use euclid::Trig;
+#[cfg(test)]
+use euclid::{TypedPoint2D, TypedSize2D};
 use num_traits::{Float, One, Zero};
 
 use std::{fmt, mem, ops};
@@ -391,7 +393,7 @@ impl<T, U> Polygon<T, U> where
             let denom = pb.dot(pb);
             if !denom.approx_eq(&T::zero()) {
                 let t = pr.dot(pb) / denom;
-                if t > T::approx_epsilon() && t < T::one() - T::approx_epsilon() {
+                if t >= T::zero() && t < T::one() {
                     *cut = Some(a + (b - a) * t);
                 }
             }
@@ -462,4 +464,34 @@ impl<T, U> Polygon<T, U> where
             _ => panic!("Unexpected indices {} {}", first, second),
         }
     }
+}
+
+
+#[test]
+fn split_diagonal() {
+    use euclid::point3;
+
+    let mut poly: Polygon<f32, ()> = Polygon::from_rect(
+        TypedRect::new(TypedPoint2D::origin(), TypedSize2D::new(1.0, 1.0)),
+        0,
+    );
+    let line = Line {
+        origin: TypedPoint3D::origin(),
+        dir: TypedVector3D::new(1.0, 1.0, 0.0).normalize(),
+    };
+    let (res1, res2) = poly.split(&line);
+
+    assert_eq!(poly.points, [
+        point3(0.0, 0.0, 0.0),
+        point3(0.0, 0.0, 0.0),
+        point3(1.0, 1.0, 0.0),
+        point3(0.0, 1.0, 0.0),
+    ]);
+    assert_eq!(res1.unwrap().points, [
+        point3(0.0, 0.0, 0.0),
+        point3(1.0, 0.0, 0.0),
+        point3(1.0, 1.0, 0.0),
+        point3(1.0, 1.0, 0.0),
+    ]);
+    assert!(res2.is_none());
 }
