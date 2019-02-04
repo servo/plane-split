@@ -3,8 +3,6 @@ use {Line, Plane, is_zero};
 use euclid::{Point2D, TypedTransform3D, TypedPoint3D, TypedVector3D, TypedRect};
 use euclid::approxeq::ApproxEq;
 use euclid::Trig;
-#[cfg(test)]
-use euclid::{TypedPoint2D, TypedSize2D};
 use num_traits::{Float, One, Zero};
 
 use std::{fmt, iter, mem, ops};
@@ -460,6 +458,7 @@ impl<T, U> Polygon<T, U> where
 
     /// Split the polygon along the specified `Line`.
     /// Will do nothing if the line doesn't belong to the polygon plane.
+    #[deprecated(note = "Use split_with_normal instead")]
     pub fn split(&mut self, line: &Line<T, U>) -> (Option<Self>, Option<Self>) {
         debug!("\tSplitting");
         // check if the cut is within the polygon plane first
@@ -504,7 +503,7 @@ impl<T, U> Polygon<T, U> where
     /// forms the side direction here, and figuring out the actual line of split isn't needed.
     /// Will do nothing if the line doesn't belong to the polygon plane.
     pub fn split_with_normal(
-        &mut self, line: Line<T, U>, normal: TypedVector3D<T, U>,
+        &mut self, line: &Line<T, U>, normal: &TypedVector3D<T, U>,
     ) -> (Option<Self>, Option<Self>) {
         debug!("\tSplitting with normal");
         // figure out which side of the split does each point belong to
@@ -549,34 +548,4 @@ impl<T, U> Polygon<T, U> where
             (None, None)
         }
     }
-}
-
-
-#[test]
-fn split_diagonal() {
-    use euclid::point3;
-
-    let mut poly: Polygon<f32, ()> = Polygon::from_rect(
-        TypedRect::new(TypedPoint2D::origin(), TypedSize2D::new(1.0, 1.0)),
-        0,
-    );
-    let line = Line {
-        origin: TypedPoint3D::origin(),
-        dir: TypedVector3D::new(1.0, 1.0, 0.0).normalize(),
-    };
-    let (res1, res2) = poly.split(&line);
-
-    assert_eq!(poly.points, [
-        point3(0.0, 0.0, 0.0),
-        point3(1.0, 1.0, 0.0),
-        point3(0.0, 1.0, 0.0),
-        point3(0.0, 0.0, 0.0),
-    ]);
-    assert_eq!(res1.unwrap().points, [
-        point3(0.0, 0.0, 0.0),
-        point3(1.0, 0.0, 0.0),
-        point3(1.0, 1.0, 0.0),
-        point3(1.0, 1.0, 0.0),
-    ]);
-    assert!(res2.is_none());
 }
