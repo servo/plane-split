@@ -63,7 +63,7 @@ impl<T, U> BspPlane for Polygon<T, U> where
             }
             Intersection::Inside(line) => {
                 debug!("\t\tCut across {:?}", line);
-                let (res_add1, res_add2) = poly.split(&line);
+                let (res_add1, res_add2) = poly.split_with_normal(&line, &self.plane.normal);
                 let mut front = Vec::new();
                 let mut back = Vec::new();
 
