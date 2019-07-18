@@ -1,6 +1,6 @@
 [package]
 name = "plane-split"
-version = "0.13.8"
+version = "0.14.0"
 description = "Plane splitting"
 authors = ["Dzmitry Malyshau <kvark@mozilla.com>"]
 license = "MPL-2.0"
@@ -10,6 +10,6 @@ documentation = "https://docs.rs/plane-split"
 
 [dependencies]
 binary-space-partition = "0.1.2"
-euclid = "0.19"
+euclid = "0.20"
 log = "0.4"
 num-traits = {version = "0.2", default-features = false}
