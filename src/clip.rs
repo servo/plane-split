@@ -1,7 +1,6 @@
-use {Intersection, NegativeHemisphereError, Plane, Polygon};
+use crate::{Intersection, NegativeHemisphereError, Plane, Polygon};
 
-use euclid::approxeq::ApproxEq;
-use euclid::{Rect, Scale, Transform3D, Trig, Vector3D};
+use euclid::{approxeq::ApproxEq, Rect, Scale, Transform3D, Trig, Vector3D};
 use num_traits::{Float, One, Zero};
 
 use std::{fmt, iter, mem, ops};
@@ -94,7 +93,7 @@ impl<
 
     /// Clip specified polygon by the contained planes, return the fragmented polygons.
     pub fn clip(&mut self, polygon: Polygon<T, U, A>) -> &[Polygon<T, U, A>] {
-        debug!("\tClipping {:?}", polygon);
+        log::debug!("\tClipping {:?}", polygon);
         self.results.clear();
         self.results.push(polygon);
 

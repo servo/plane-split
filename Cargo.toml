@@ -7,6 +7,7 @@ license = "MPL-2.0"
 repository = "https://github.com/servo/plane-split"
 keywords = ["geometry", "math"]
 documentation = "https://docs.rs/plane-split"
+edition = "2018"
 
 [dependencies]
 binary-space-partition = "0.1.2"

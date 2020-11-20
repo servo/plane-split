@@ -1,8 +1,4 @@
-extern crate euclid;
-extern crate plane_split;
-
-use euclid::{point3, rect, vec3};
-use euclid::{Angle, Rect, Transform3D};
+use euclid::{point3, rect, vec3, Angle, Rect, Transform3D};
 use plane_split::{Clipper, Plane, Polygon};
 
 use std::f32::consts::FRAC_PI_4;

@@ -1,9 +1,6 @@
-use {is_zero, Line, Plane};
+use crate::{is_zero, Line, Plane};
 
-use euclid::approxeq::ApproxEq;
-use euclid::default::Point2D;
-use euclid::Trig;
-use euclid::{Point3D, Rect, Transform3D, Vector3D};
+use euclid::{approxeq::ApproxEq, default::Point2D, Point3D, Rect, Transform3D, Trig, Vector3D};
 use num_traits::{Float, One, Zero};
 
 use std::{fmt, iter, mem, ops};
@@ -342,13 +339,13 @@ where
     /// Compute the line of intersection with an infinite plane.
     pub fn intersect_plane(&self, other: &Plane<T, U>) -> Intersection<Line<T, U>> {
         if other.are_outside(&self.points) {
-            debug!("\t\tOutside of the plane");
+            log::debug!("\t\tOutside of the plane");
             return Intersection::Outside;
         }
         match self.plane.intersect(&other) {
             Some(line) => Intersection::Inside(line),
             None => {
-                debug!("\t\tCoplanar");
+                log::debug!("\t\tCoplanar");
                 Intersection::Coplanar
             }
         }
@@ -357,7 +354,7 @@ where
     /// Compute the line of intersection with another polygon.
     pub fn intersect(&self, other: &Self) -> Intersection<Line<T, U>> {
         if self.plane.are_outside(&other.points) || other.plane.are_outside(&self.points) {
-            debug!("\t\tOne is completely outside of the other");
+            log::debug!("\t\tOne is completely outside of the other");
             return Intersection::Outside;
         }
         match self.plane.intersect(&other.plane) {
@@ -368,12 +365,12 @@ where
                     Intersection::Inside(line)
                 } else {
                     // projections on the line don't intersect
-                    debug!("\t\tProjection is outside");
+                    log::debug!("\t\tProjection is outside");
                     Intersection::Outside
                 }
             }
             None => {
-                debug!("\t\tCoplanar");
+                log::debug!("\t\tCoplanar");
                 Intersection::Coplanar
             }
         }
@@ -386,7 +383,7 @@ where
     ) -> (Option<Self>, Option<Self>) {
         //TODO: can be optimized for when the polygon has a redundant 4th vertex
         //TODO: can be simplified greatly if only working with triangles
-        debug!("\t\tReached complex case [{}, {}]", first.0, second.0);
+        log::debug!("\t\tReached complex case [{}, {}]", first.0, second.0);
         let base = first.0;
         assert!(base < self.points.len());
         match second.0 - first.0 {
@@ -468,12 +465,12 @@ where
     /// Will do nothing if the line doesn't belong to the polygon plane.
     #[deprecated(note = "Use split_with_normal instead")]
     pub fn split(&mut self, line: &Line<T, U>) -> (Option<Self>, Option<Self>) {
-        debug!("\tSplitting");
+        log::debug!("\tSplitting");
         // check if the cut is within the polygon plane first
         if !is_zero(self.plane.normal.dot(line.dir))
             || !is_zero(self.plane.signed_distance_to(&line.origin))
         {
-            debug!(
+            log::debug!(
                 "\t\tDoes not belong to the plane, normal dot={:?}, origin distance={:?}",
                 self.plane.normal.dot(line.dir),
                 self.plane.signed_distance_to(&line.origin)
@@ -520,7 +517,7 @@ where
         line: &Line<T, U>,
         normal: &Vector3D<T, U>,
     ) -> (Option<Self>, Option<Self>) {
-        debug!("\tSplitting with normal");
+        log::debug!("\tSplitting with normal");
         // figure out which side of the split does each point belong to
         let mut sides = [T::zero(); 4];
         let (mut cut_positive, mut cut_negative) = (None, None);
@@ -558,7 +555,7 @@ where
                 // We don't expect that the direction changes more than once, unless
                 // the polygon is close to redundant, and we hit precision issues when
                 // computing the sides.
-                warn!("Splitting failed due to precision issues: {:?}", sides);
+                log::warn!("Splitting failed due to precision issues: {:?}", sides);
                 break;
             }
             *cut = Some((i, point));
