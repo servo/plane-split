@@ -1,7 +1,3 @@
-extern crate binary_space_partition;
-extern crate euclid;
-extern crate plane_split;
-
 use binary_space_partition::{Plane as Plane_, PlaneCut};
 use euclid::{rect, vec3, Angle, Rect, Transform3D};
 use plane_split::{make_grid, BspSplitter, Polygon, Splitter};

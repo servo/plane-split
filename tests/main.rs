@@ -1,8 +1,4 @@
-extern crate euclid;
-extern crate plane_split;
-
-use euclid::approxeq::ApproxEq;
-use euclid::{point2, point3, vec3, Angle, Rect, Size2D, Transform3D};
+use euclid::{approxeq::ApproxEq, point2, point3, vec3, Angle, Rect, Size2D, Transform3D};
 use plane_split::{Intersection, Line, LineProjection, NegativeHemisphereError, Plane, Polygon};
 
 #[test]

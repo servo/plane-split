@@ -10,18 +10,11 @@ the resulting sub-polygons by depth and avoid transparency blending issues.
 */
 #![warn(missing_docs)]
 
-extern crate binary_space_partition;
-extern crate euclid;
-#[macro_use]
-extern crate log;
-extern crate num_traits;
-
 mod bsp;
 mod clip;
 mod polygon;
 
-use euclid::approxeq::ApproxEq;
-use euclid::{Point3D, Scale, Vector3D};
+use euclid::{approxeq::ApproxEq, Point3D, Scale, Vector3D};
 use num_traits::{Float, One, Zero};
 
 use std::ops;
