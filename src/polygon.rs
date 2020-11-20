@@ -549,7 +549,13 @@ impl<T, U, A> Polygon<T, U, A> where
             // sides of intersection are alike, so distances along the [point0, point1] line
             // are proportional to the side vector lengths we just computed: (side0, side1).
             let point = (*point0 * side1.abs() + point1.to_vector() * side0.abs()) / (side0 - side1).abs();
-            debug_assert_eq!(*cut, None);
+            if cut.is_some() {
+                // We don't expect that the direction changes more than once, unless
+                // the polygon is close to redundant, and we hit precision issues when
+                // computing the sides.
+                warn!("Splitting failed due to precision issues: {:?}", sides);
+                break
+            }
             *cut = Some((i, point));
         }
         // form new polygons
@@ -562,4 +568,28 @@ impl<T, U, A> Polygon<T, U, A> where
             (None, None)
         }
     }
+}
+
+#[test]
+fn test_split_precision() {
+    // regression test for https://bugzilla.mozilla.org/show_bug.cgi?id=1678454
+    let mut polygon = Polygon::<_, (), ()> {
+        points: [
+            Point3D::new(300.0102, 150.00958, 0.0),
+            Point3D::new(606.0, 306.0, 0.0),
+            Point3D::new(300.21954, 150.11946, 0.0),
+            Point3D::new(300.08844, 150.05064, 0.0),
+        ],
+        plane: Plane {
+            normal: Vector3D::zero(),
+            offset: 0.0,
+        },
+        anchor: (),
+    };
+    let line = Line {
+        origin: Point3D::new(3.0690663, -5.8472385, 0.0),
+        dir: Vector3D::new(0.8854436, 0.46474677, -0.0),
+    };
+    let normal = Vector3D::new(0.46474662, -0.8854434, -0.0006389789);
+    polygon.split_with_normal(&line, &normal);
 }
