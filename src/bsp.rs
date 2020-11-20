@@ -1,19 +1,24 @@
-use {Intersection, Plane, Polygon, Splitter};
 use is_zero;
+use {Intersection, Plane, Polygon, Splitter};
 
 use binary_space_partition::{BspNode, Plane as BspPlane, PlaneCut};
-use euclid::{Point3D, Vector3D};
 use euclid::approxeq::ApproxEq;
+use euclid::{Point3D, Vector3D};
 use num_traits::{Float, One, Zero};
 
 use std::{fmt, iter, ops};
 
-
-impl<T, U, A> BspPlane for Polygon<T, U, A> where
-    T: Copy + fmt::Debug + ApproxEq<T> +
-        ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
-        ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
-        Zero + Float,
+impl<T, U, A> BspPlane for Polygon<T, U, A>
+where
+    T: Copy
+        + fmt::Debug
+        + ApproxEq<T>
+        + ops::Sub<T, Output = T>
+        + ops::Add<T, Output = T>
+        + ops::Mul<T, Output = T>
+        + ops::Div<T, Output = T>
+        + Zero
+        + Float,
     U: fmt::Debug,
     A: Copy + fmt::Debug,
 {
@@ -83,11 +88,8 @@ impl<T, U, A> BspPlane for Polygon<T, U, A> where
                     }
                 }
 
-                PlaneCut::Cut {
-                    front,
-                    back,
-                }
-            },
+                PlaneCut::Cut { front, back }
+            }
         }
     }
 
@@ -95,7 +97,6 @@ impl<T, U, A> BspPlane for Polygon<T, U, A> where
         self.plane.normal.dot(other.plane.normal) > T::zero()
     }
 }
-
 
 /// Binary Space Partitioning splitter, uses a BSP tree.
 pub struct BspSplitter<T, U, A> {
@@ -113,11 +114,18 @@ impl<T, U, A> BspSplitter<T, U, A> {
     }
 }
 
-impl<T, U, A> Splitter<T, U, A> for BspSplitter<T, U, A> where
-    T: Copy + fmt::Debug + ApproxEq<T> +
-        ops::Sub<T, Output=T> + ops::Add<T, Output=T> +
-        ops::Mul<T, Output=T> + ops::Div<T, Output=T> +
-        Zero + One + Float,
+impl<T, U, A> Splitter<T, U, A> for BspSplitter<T, U, A>
+where
+    T: Copy
+        + fmt::Debug
+        + ApproxEq<T>
+        + ops::Sub<T, Output = T>
+        + ops::Add<T, Output = T>
+        + ops::Mul<T, Output = T>
+        + ops::Div<T, Output = T>
+        + Zero
+        + One
+        + Float,
     U: fmt::Debug,
     A: Copy + fmt::Debug + Default,
 {
