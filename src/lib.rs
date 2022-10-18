@@ -14,6 +14,8 @@ mod bsp;
 mod clip;
 mod polygon;
 
+pub use bsp::{BspPlane, PlaneCut};
+
 use euclid::{approxeq::ApproxEq, Point3D, Scale, Vector3D};
 use num_traits::{Float, One, Zero};
 

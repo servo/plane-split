@@ -1,6 +1,6 @@
-use binary_space_partition::{Plane as Plane_, PlaneCut};
 use euclid::{rect, vec3, Angle, Rect, Transform3D};
 use plane_split::{make_grid, BspSplitter, Polygon, Splitter};
+use plane_split::{BspPlane, PlaneCut};
 use std::f32::consts::FRAC_PI_4;
 
 fn grid_impl(count: usize, splitter: &mut dyn Splitter<f32, (), usize>) {

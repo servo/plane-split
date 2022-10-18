@@ -10,7 +10,6 @@ documentation = "https://docs.rs/plane-split"
 edition = "2018"
 
 [dependencies]
-binary-space-partition = "0.1.2"
 euclid = "0.22"
 log = "0.4"
 num-traits = { version = "0.2", default-features = false }
