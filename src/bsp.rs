@@ -1,9 +1,8 @@
 use crate::{is_zero, Intersection, Plane, Polygon, Splitter};
 
-use euclid::{approxeq::ApproxEq, Point3D, Vector3D};
-use num_traits::{Float, One, Zero};
+use euclid::default::{Point3D, Vector3D};
 
-use std::{fmt, iter, ops};
+use std::{fmt, iter};
 
 /// A plane abstracted to the matter of partitioning.
 pub trait BspPlane: Sized + Clone {
@@ -14,18 +13,8 @@ pub trait BspPlane: Sized + Clone {
     fn is_aligned(&self, otgher: &Self) -> bool;
 }
 
-impl<T, U, A> BspPlane for Polygon<T, U, A>
+impl<A> BspPlane for Polygon<A>
 where
-    T: Copy
-        + fmt::Debug
-        + ApproxEq<T>
-        + ops::Sub<T, Output = T>
-        + ops::Add<T, Output = T>
-        + ops::Mul<T, Output = T>
-        + ops::Div<T, Output = T>
-        + Zero
-        + Float,
-    U: fmt::Debug,
     A: Copy + fmt::Debug,
 {
     fn cut(&self, mut poly: Self) -> PlaneCut<Self> {
@@ -40,14 +29,14 @@ where
                 let dist = self.plane.offset - ndot * poly.plane.offset;
                 (Intersection::Coplanar, dist)
             }
-            Some(_) if self.plane.are_outside(&poly.points) => {
+            Some(_) if self.plane.are_outside(&poly.points[..]) => {
                 //Note: we can't start with `are_outside` because it's subject to FP precision
                 let dist = self.plane.signed_distance_sum_to(&poly);
                 (Intersection::Outside, dist)
             }
             Some(line) => {
                 //Note: distance isn't relevant here
-                (Intersection::Inside(line), T::zero())
+                (Intersection::Inside(line), 0.0)
             }
         };
 
@@ -61,7 +50,7 @@ where
             }
             Intersection::Coplanar | Intersection::Outside => {
                 log::debug!("\t\tOutside at {:?}", dist);
-                if dist > T::zero() {
+                if dist > 0.0 {
                     PlaneCut::Cut {
                         front: vec![poly],
                         back: vec![],
@@ -85,7 +74,7 @@ where
                     .filter(|p| !p.is_empty())
                 {
                     let dist = self.plane.signed_distance_sum_to(&sub);
-                    if dist > T::zero() {
+                    if dist > 0.0 {
                         log::trace!("\t\t\tdist {:?} -> front: {:?}", dist, sub);
                         front.push(sub)
                     } else {
@@ -100,17 +89,17 @@ where
     }
 
     fn is_aligned(&self, other: &Self) -> bool {
-        self.plane.normal.dot(other.plane.normal) > T::zero()
+        self.plane.normal.dot(other.plane.normal) > 0.0
     }
 }
 
 /// Binary Space Partitioning splitter, uses a BSP tree.
-pub struct BspSplitter<T, U, A> {
-    tree: BspNode<Polygon<T, U, A>>,
-    result: Vec<Polygon<T, U, A>>,
+pub struct BspSplitter<A> {
+    tree: BspNode<Polygon<A>>,
+    result: Vec<Polygon<A>>,
 }
 
-impl<T, U, A> BspSplitter<T, U, A> {
+impl<A> BspSplitter<A> {
     /// Create a new BSP splitter.
     pub fn new() -> Self {
         BspSplitter {
@@ -120,36 +109,25 @@ impl<T, U, A> BspSplitter<T, U, A> {
     }
 }
 
-impl<T, U, A> Splitter<T, U, A> for BspSplitter<T, U, A>
+impl<A> Splitter<A> for BspSplitter<A>
 where
-    T: Copy
-        + fmt::Debug
-        + ApproxEq<T>
-        + ops::Sub<T, Output = T>
-        + ops::Add<T, Output = T>
-        + ops::Mul<T, Output = T>
-        + ops::Div<T, Output = T>
-        + Zero
-        + One
-        + Float,
-    U: fmt::Debug,
     A: Copy + fmt::Debug + Default,
 {
     fn reset(&mut self) {
         self.tree = BspNode::new();
     }
 
-    fn add(&mut self, poly: Polygon<T, U, A>) {
+    fn add(&mut self, poly: Polygon<A>) {
         self.tree.insert(poly);
     }
 
-    fn sort(&mut self, view: Vector3D<T, U>) -> &[Polygon<T, U, A>] {
+    fn sort(&mut self, view: Vector3D<f64>) -> &[Polygon<A>] {
         //debug!("\t\ttree before sorting {:?}", self.tree);
         let poly = Polygon {
             points: [Point3D::origin(); 4],
             plane: Plane {
                 normal: -view, //Note: BSP `order()` is back to front
-                offset: T::zero(),
+                offset: 0.0,
             },
             anchor: A::default(),
         };
