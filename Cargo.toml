@@ -12,3 +12,4 @@ edition = "2018"
 [dependencies]
 euclid = "0.22"
 log = "0.4"
+smallvec = "1.9"

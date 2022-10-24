@@ -4,6 +4,7 @@ use euclid::{
     approxeq::ApproxEq,
     default::{Point2D, Point3D, Rect, Transform3D, Vector3D},
 };
+use smallvec::SmallVec;
 
 use std::{iter, mem};
 
@@ -546,7 +547,15 @@ where
         }
     }
 
-    pub fn cut(&self, mut poly: Self) -> PlaneCut<Self> {
+    /// Cut a polygon with another one.
+    ///
+    /// Write the resulting polygons in `front` and `back` if the polygon needs to be split.
+    pub fn cut(
+        &self,
+        poly: &Self,
+        front: &mut SmallVec<[Polygon<A>; 2]>,
+        back: &mut SmallVec<[Polygon<A>; 2]>,
+    ) -> PlaneCut {
         //Note: we treat `self` as a plane, and `poly` as a concrete polygon here
         let (intersection, dist) = match self.plane.intersect(&poly.plane) {
             None => {
@@ -569,24 +578,19 @@ where
             //Note: we deliberately make the comparison wider than just with T::epsilon().
             // This is done to avoid mistakenly ordering items that should be on the same
             // plane but end up slightly different due to the floating point precision.
-            Intersection::Coplanar if is_zero(dist) => PlaneCut::Sibling(poly),
+            Intersection::Coplanar if is_zero(dist) => PlaneCut::Sibling,
             Intersection::Coplanar | Intersection::Outside => {
                 if dist > 0.0 {
-                    PlaneCut::Cut {
-                        front: vec![poly],
-                        back: vec![],
-                    }
+                    front.push(poly.clone());
                 } else {
-                    PlaneCut::Cut {
-                        front: vec![],
-                        back: vec![poly],
-                    }
+                    back.push(poly.clone());
                 }
+
+                PlaneCut::Cut
             }
             Intersection::Inside(line) => {
+                let mut poly = poly.clone();
                 let (res_add1, res_add2) = poly.split_with_normal(&line, &self.plane.normal);
-                let mut front = Vec::new();
-                let mut back = Vec::new();
 
                 for sub in iter::once(poly)
                     .chain(res_add1)
@@ -601,32 +605,28 @@ where
                     }
                 }
 
-                PlaneCut::Cut { front, back }
+                PlaneCut::Cut
             }
         }
     }
 
+    /// Returns whether both polygon's planes are parallel.
     pub fn is_aligned(&self, other: &Self) -> bool {
         self.plane.normal.dot(other.plane.normal) > 0.0
     }
 }
 
-/// The result of one plane being cut by another one.
+/// The result of a polygon being cut by a plane.
 /// The "cut" here is an attempt to classify a plane as being
 /// in front or in the back of another one.
-#[derive(Debug)]
-pub enum PlaneCut<T> {
+#[derive(Debug, PartialEq)]
+pub enum PlaneCut {
     /// The planes are one the same geometrical plane.
-    Sibling(T),
+    Sibling,
     /// Planes are different, thus we can either determine that
     /// our plane is completely in front/back of another one,
     /// or split it into these sub-groups.
-    Cut {
-        /// Sub-planes in front of the base plane.
-        front: Vec<T>,
-        /// Sub-planes in the back of the base plane.
-        back: Vec<T>,
-    },
+    Cut,
 }
 
 #[test]

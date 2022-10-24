@@ -1,21 +1,30 @@
 use crate::{Plane, PlaneCut, Polygon};
 
 use euclid::default::{Point3D, Vector3D};
+use smallvec::SmallVec;
 
 use std::fmt;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct PolygonIdx(usize);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct NodeIdx(usize);
+
 /// Binary Space Partitioning splitter, uses a BSP tree.
 pub struct BspSplitter<A: Copy> {
-    tree: BspNode<A>,
     result: Vec<Polygon<A>>,
+    nodes: Vec<BspNode>,
+    polygons: Vec<Polygon<A>>,
 }
 
 impl<A: Copy> BspSplitter<A> {
     /// Create a new BSP splitter.
     pub fn new() -> Self {
         BspSplitter {
-            tree: BspNode::new(),
             result: Vec::new(),
+            nodes: vec![BspNode::new()],
+            polygons: Vec::new(),
         }
     }
 }
@@ -24,15 +33,27 @@ impl<A> BspSplitter<A>
 where
     A: Copy + fmt::Debug + Default,
 {
-    fn reset(&mut self) {
-        self.tree = BspNode::new();
+    /// Put the splitter back in it initial state.
+    ///
+    /// Call this at the beginning of every frame when reusing the splitter.
+    pub fn reset(&mut self) {
+        self.polygons.clear();
+        self.nodes.clear();
+        self.nodes.push(BspNode::new());
     }
 
-    fn add(&mut self, poly: Polygon<A>) {
-        self.tree.insert(poly);
+    /// Add a polygon to the plane splitter.
+    ///
+    /// This is where most of the expensive computation happens.
+    pub fn add(&mut self, poly: Polygon<A>) {
+        let root = NodeIdx(0);
+        self.insert(root, &poly);
     }
 
-    fn sort(&mut self, view: Vector3D<f64>) -> &[Polygon<A>] {
+    /// Sort the added and split polygons against the view vector.
+    ///
+    /// Call this towards the end of the frame after having added all polygons.
+    pub fn sort(&mut self, view: Vector3D<f64>) -> &[Polygon<A>] {
         //debug!("\t\ttree before sorting {:?}", self.tree);
         let poly = Polygon {
             points: [Point3D::origin(); 4],
@@ -42,8 +63,13 @@ where
             },
             anchor: A::default(),
         };
-        self.result.clear();
-        self.tree.order(&poly, &mut self.result);
+
+        let root = NodeIdx(0);
+        let mut result = std::mem::take(&mut self.result);
+        result.clear();
+        self.order(root, &poly, &mut result);
+        self.result = result;
+
         &self.result
     }
 
@@ -58,53 +84,42 @@ where
         }
         self.sort(view)
     }
-}
 
-/// Add a list of planes to a particular front/end branch of some root node.
-fn add_side<A: Copy>(side: &mut Option<Box<BspNode<A>>>, mut planes: Vec<Polygon<A>>) {
-    if planes.len() != 0 {
-        if side.is_none() {
-            *side = Some(Box::new(BspNode::new()));
-        }
-        let node = side.as_mut().unwrap();
-        for p in planes.drain(..) {
-            node.insert(p)
-        }
-    }
-}
-
-/// A node in the `BspTree`, which can be considered a tree itself.
-#[derive(Clone, Debug)]
-pub struct BspNode<A: Copy> {
-    values: Vec<Polygon<A>>,
-    front: Option<Box<BspNode<A>>>,
-    back: Option<Box<BspNode<A>>>,
-}
-
-impl<A: Copy> BspNode<A> {
-    /// Create a new node.
-    pub fn new() -> Self {
-        BspNode {
-            values: Vec::new(),
-            front: None,
-            back: None,
-        }
-    }
-}
-
-impl<A: Copy> BspNode<A> {
     /// Insert a value into the sub-tree starting with this node.
     /// This operation may spawn additional leafs/branches of the tree.
-    pub fn insert(&mut self, value: Polygon<A>) {
-        if self.values.is_empty() {
-            self.values.push(value);
+    fn insert(&mut self, node_idx: NodeIdx, value: &Polygon<A>) {
+        let node = &mut self.nodes[node_idx.0];
+        if node.values.is_empty() {
+            node.values.push(add_polygon(&mut self.polygons, value));
             return;
         }
-        match self.values[0].cut(value) {
-            PlaneCut::Sibling(value) => self.values.push(value),
-            PlaneCut::Cut { front, back } => {
-                add_side(&mut self.front, front);
-                add_side(&mut self.back, back);
+
+        let mut front: SmallVec<[Polygon<A>; 2]> = SmallVec::new();
+        let mut back: SmallVec<[Polygon<A>; 2]> = SmallVec::new();
+        let first = node.values[0].0;
+        match self.polygons[first].cut(value, &mut front, &mut back) {
+            PlaneCut::Sibling => {
+                node.values.push(add_polygon(&mut self.polygons, value));
+            }
+            PlaneCut::Cut => {
+                if front.len() != 0 {
+                    if self.nodes[node_idx.0].front.is_none() {
+                        self.nodes[node_idx.0].front = Some(add_node(&mut self.nodes));
+                    }
+                    let node_front = self.nodes[node_idx.0].front.unwrap();
+                    for p in &front {
+                        self.insert(node_front, p)
+                    }
+                }
+                if back.len() != 0 {
+                    if self.nodes[node_idx.0].back.is_none() {
+                        self.nodes[node_idx.0].back = Some(add_node(&mut self.nodes));
+                    }
+                    let node_back = self.nodes[node_idx.0].back.unwrap();
+                    for p in &back {
+                        self.insert(node_back, p)
+                    }
+                }
             }
         }
     }
@@ -112,21 +127,61 @@ impl<A: Copy> BspNode<A> {
     /// Build the draw order of this sub-tree into an `out` vector,
     /// so that the contained planes are sorted back to front according
     /// to the view vector defined as the `base` plane front direction.
-    pub fn order(&self, base: &Polygon<A>, out: &mut Vec<Polygon<A>>) {
-        let (former, latter) = match self.values.first() {
+    pub fn order(&self, node: NodeIdx, base: &Polygon<A>, out: &mut Vec<Polygon<A>>) {
+        let node = &self.nodes[node.0];
+        let (former, latter) = match node.values.first() {
             None => return,
-            Some(ref first) if base.is_aligned(first) => (self.front.as_ref(), self.back.as_ref()),
-            Some(_) => (self.back.as_ref(), self.front.as_ref()),
+            Some(first) => {
+                if base.is_aligned(&self.polygons[first.0]) {
+                    (node.front, node.back)
+                } else {
+                    (node.back, node.front)
+                }
+            }
         };
 
-        if let Some(ref node) = former {
-            node.order(base, out);
+        if let Some(node) = former {
+            self.order(node, base, out);
         }
 
-        out.extend_from_slice(&self.values);
+        out.reserve(node.values.len());
+        for poly_idx in &node.values {
+            out.push(self.polygons[poly_idx.0].clone());
+        }
 
-        if let Some(ref node) = latter {
-            node.order(base, out);
+        if let Some(node) = latter {
+            self.order(node, base, out);
+        }
+    }
+}
+
+pub fn add_polygon<A: Copy>(polygons: &mut Vec<Polygon<A>>, poly: &Polygon<A>) -> PolygonIdx {
+    let index = PolygonIdx(polygons.len());
+    polygons.push(poly.clone());
+    index
+}
+
+pub fn add_node(nodes: &mut Vec<BspNode>) -> NodeIdx {
+    let index = NodeIdx(nodes.len());
+    nodes.push(BspNode::new());
+    index
+}
+
+/// A node in the `BspTree`, which can be considered a tree itself.
+#[derive(Clone, Debug)]
+pub struct BspNode {
+    values: SmallVec<[PolygonIdx; 4]>,
+    front: Option<NodeIdx>,
+    back: Option<NodeIdx>,
+}
+
+impl BspNode {
+    /// Create a new node.
+    pub fn new() -> Self {
+        BspNode {
+            values: SmallVec::new(),
+            front: None,
+            back: None,
         }
     }
 }

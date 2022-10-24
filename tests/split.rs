@@ -94,6 +94,7 @@ fn external_bsp() {
 
 #[test]
 fn test_cut() {
+    use smallvec::SmallVec;
     let rect: Rect<f64> = rect(-10.0, -10.0, 20.0, 20.0);
     let poly = Polygon::from_rect(rect, 0);
     let mut poly2 = Polygon::from_rect(rect, 0);
@@ -101,39 +102,37 @@ fn test_cut() {
     for p in &mut poly2.points {
         p.z += 0.00000001;
     }
-    match poly.cut(poly2.clone()) {
-        PlaneCut::Sibling(p) => assert_eq!(p, poly2),
-        PlaneCut::Cut { .. } => panic!("wrong cut!"),
-    }
+
+    let mut front: SmallVec<[Polygon<i32>; 2]> = SmallVec::new();
+    let mut back: SmallVec<[Polygon<i32>; 2]> = SmallVec::new();
+
+    assert_eq!(poly.cut(&poly2, &mut front, &mut back), PlaneCut::Sibling);
+    assert!(front.is_empty());
+    assert!(back.is_empty());
+
     // test robustness for normal
     poly2.plane.normal.z += 0.00000001;
-    match poly.cut(poly2.clone()) {
-        PlaneCut::Sibling(p) => assert_eq!(p, poly2),
-        PlaneCut::Cut { .. } => panic!("wrong cut!"),
-    }
+    assert_eq!(poly.cut(&poly2, &mut front, &mut back), PlaneCut::Sibling);
+    assert!(front.is_empty());
+    assert!(back.is_empty());
+
     // test opposite normal handling
     poly2.plane.normal *= -1.0;
-    match poly.cut(poly2.clone()) {
-        PlaneCut::Sibling(p) => assert_eq!(p, poly2),
-        PlaneCut::Cut { .. } => panic!("wrong cut!"),
-    }
+    assert_eq!(poly.cut(&poly2, &mut front, &mut back), PlaneCut::Sibling);
+    assert!(front.is_empty());
+    assert!(back.is_empty());
 
     // test grouping front
     poly2.plane.offset += 0.1;
-    match poly.cut(poly2.clone()) {
-        PlaneCut::Cut {
-            ref front,
-            ref back,
-        } => assert_eq!((front.len(), back.len()), (1, 0)),
-        PlaneCut::Sibling(_) => panic!("wrong sibling!"),
-    }
+    assert_eq!(poly.cut(&poly2, &mut front, &mut back), PlaneCut::Cut);
+    assert_eq!(front.len(), 1);
+    assert!(back.is_empty());
+
+    front.clear();
+
     // test grouping back
     poly2.plane.normal *= -1.0;
-    match poly.cut(poly2.clone()) {
-        PlaneCut::Cut {
-            ref front,
-            ref back,
-        } => assert_eq!((front.len(), back.len()), (0, 1)),
-        PlaneCut::Sibling(_) => panic!("wrong sibling!"),
-    }
+    assert_eq!(poly.cut(&poly2, &mut front, &mut back), PlaneCut::Cut);
+    assert_eq!(back.len(), 1);
+    assert!(front.is_empty());
 }
