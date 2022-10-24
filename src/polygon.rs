@@ -4,7 +4,6 @@ use euclid::{
     approxeq::ApproxEq,
     default::{Point2D, Point3D, Rect, Transform3D, Vector3D},
 };
-use num_traits::Float;
 
 use std::{iter, mem};
 
@@ -132,7 +131,7 @@ where
         let edge3 = points[3] - points[0];
         let edge4 = points[3] - points[1];
 
-        if edge2.square_length() < f64::epsilon() || edge4.square_length() < f64::epsilon() {
+        if edge2.square_length() < f64::EPSILON || edge4.square_length() < f64::EPSILON {
             return None;
         }
 
@@ -289,8 +288,8 @@ where
     /// Check if the polygon doesn't contain any space. This may happen
     /// after a sequence of splits, and such polygons should be discarded.
     pub fn is_empty(&self) -> bool {
-        (self.points[0] - self.points[2]).square_length() < f64::epsilon()
-            || (self.points[1] - self.points[3]).square_length() < f64::epsilon()
+        (self.points[0] - self.points[2]).square_length() < f64::EPSILON
+            || (self.points[1] - self.points[3]).square_length() < f64::EPSILON
     }
 
     /// Check if this polygon contains another one.
