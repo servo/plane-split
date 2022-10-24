@@ -14,7 +14,7 @@ mod bsp;
 mod clip;
 mod polygon;
 
-pub use bsp::{BspPlane, PlaneCut};
+pub use bsp::PlaneCut;
 
 use euclid::{
     approxeq::ApproxEq,
@@ -187,32 +187,6 @@ impl Plane {
             origin,
             dir: cross_dir.normalize(),
         })
-    }
-}
-
-/// Generic plane splitter interface
-pub trait Splitter<A> {
-    /// Reset the splitter results.
-    fn reset(&mut self);
-
-    /// Add a new polygon and return a slice of the subdivisions
-    /// that avoid collision with any of the previously added polygons.
-    fn add(&mut self, polygon: Polygon<A>);
-
-    /// Sort the produced polygon set by the ascending distance across
-    /// the specified view vector. Return the sorted slice.
-    fn sort(&mut self, view: Vector3D<f64>) -> &[Polygon<A>];
-
-    /// Process a set of polygons at once.
-    fn solve(&mut self, input: &[Polygon<A>], view: Vector3D<f64>) -> &[Polygon<A>]
-    where
-        A: Copy,
-    {
-        self.reset();
-        for p in input {
-            self.add(p.clone());
-        }
-        self.sort(view)
     }
 }
 

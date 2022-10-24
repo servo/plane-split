@@ -1,31 +1,18 @@
-use crate::{is_zero, Intersection, Plane, Polygon, Splitter};
+use crate::{is_zero, Intersection, Plane, Polygon};
 
 use euclid::default::{Point3D, Vector3D};
 
 use std::{fmt, iter};
 
-/// A plane abstracted to the matter of partitioning.
-pub trait BspPlane: Sized + Clone {
-    /// Try to cut a different plane by this one.
-    fn cut(&self, other: Self) -> PlaneCut<Self>;
-    /// Check if a different plane is aligned in the same direction
-    /// as this one.
-    fn is_aligned(&self, otgher: &Self) -> bool;
-}
-
-impl<A> BspPlane for Polygon<A>
+impl<A> Polygon<A>
 where
-    A: Copy + fmt::Debug,
+    A: Copy,
 {
-    fn cut(&self, mut poly: Self) -> PlaneCut<Self> {
-        log::debug!("\tCutting anchor {:?} by {:?}", poly.anchor, self.anchor);
-        log::trace!("\t\tbase {:?}", self.plane);
-
+    pub fn cut(&self, mut poly: Self) -> PlaneCut<Self> {
         //Note: we treat `self` as a plane, and `poly` as a concrete polygon here
         let (intersection, dist) = match self.plane.intersect(&poly.plane) {
             None => {
                 let ndot = self.plane.normal.dot(poly.plane.normal);
-                log::debug!("\t\tNormals are aligned with {:?}", ndot);
                 let dist = self.plane.offset - ndot * poly.plane.offset;
                 (Intersection::Coplanar, dist)
             }
@@ -44,12 +31,8 @@ where
             //Note: we deliberately make the comparison wider than just with T::epsilon().
             // This is done to avoid mistakenly ordering items that should be on the same
             // plane but end up slightly different due to the floating point precision.
-            Intersection::Coplanar if is_zero(dist) => {
-                log::debug!("\t\tCoplanar at {:?}", dist);
-                PlaneCut::Sibling(poly)
-            }
+            Intersection::Coplanar if is_zero(dist) => PlaneCut::Sibling(poly),
             Intersection::Coplanar | Intersection::Outside => {
-                log::debug!("\t\tOutside at {:?}", dist);
                 if dist > 0.0 {
                     PlaneCut::Cut {
                         front: vec![poly],
@@ -63,7 +46,6 @@ where
                 }
             }
             Intersection::Inside(line) => {
-                log::debug!("\t\tCut across {:?}", line);
                 let (res_add1, res_add2) = poly.split_with_normal(&line, &self.plane.normal);
                 let mut front = Vec::new();
                 let mut back = Vec::new();
@@ -75,10 +57,8 @@ where
                 {
                     let dist = self.plane.signed_distance_sum_to(&sub);
                     if dist > 0.0 {
-                        log::trace!("\t\t\tdist {:?} -> front: {:?}", dist, sub);
                         front.push(sub)
                     } else {
-                        log::trace!("\t\t\tdist {:?} -> back: {:?}", dist, sub);
                         back.push(sub)
                     }
                 }
@@ -88,18 +68,18 @@ where
         }
     }
 
-    fn is_aligned(&self, other: &Self) -> bool {
+    pub fn is_aligned(&self, other: &Self) -> bool {
         self.plane.normal.dot(other.plane.normal) > 0.0
     }
 }
 
 /// Binary Space Partitioning splitter, uses a BSP tree.
-pub struct BspSplitter<A> {
-    tree: BspNode<Polygon<A>>,
+pub struct BspSplitter<A: Copy> {
+    tree: BspNode<A>,
     result: Vec<Polygon<A>>,
 }
 
-impl<A> BspSplitter<A> {
+impl<A: Copy> BspSplitter<A> {
     /// Create a new BSP splitter.
     pub fn new() -> Self {
         BspSplitter {
@@ -109,7 +89,7 @@ impl<A> BspSplitter<A> {
     }
 }
 
-impl<A> Splitter<A> for BspSplitter<A>
+impl<A> BspSplitter<A>
 where
     A: Copy + fmt::Debug + Default,
 {
@@ -135,6 +115,18 @@ where
         self.tree.order(&poly, &mut self.result);
         &self.result
     }
+
+    /// Process a set of polygons at once.
+    pub fn solve(&mut self, input: &[Polygon<A>], view: Vector3D<f64>) -> &[Polygon<A>]
+    where
+        A: Copy,
+    {
+        self.reset();
+        for p in input {
+            self.add(p.clone());
+        }
+        self.sort(view)
+    }
 }
 
 /// The result of one plane being cut by another one.
@@ -156,7 +148,7 @@ pub enum PlaneCut<T> {
 }
 
 /// Add a list of planes to a particular front/end branch of some root node.
-fn add_side<T: BspPlane>(side: &mut Option<Box<BspNode<T>>>, mut planes: Vec<T>) {
+fn add_side<A: Copy>(side: &mut Option<Box<BspNode<A>>>, mut planes: Vec<Polygon<A>>) {
     if planes.len() != 0 {
         if side.is_none() {
             *side = Some(Box::new(BspNode::new()));
@@ -170,13 +162,13 @@ fn add_side<T: BspPlane>(side: &mut Option<Box<BspNode<T>>>, mut planes: Vec<T>)
 
 /// A node in the `BspTree`, which can be considered a tree itself.
 #[derive(Clone, Debug)]
-pub struct BspNode<T> {
-    values: Vec<T>,
-    front: Option<Box<BspNode<T>>>,
-    back: Option<Box<BspNode<T>>>,
+pub struct BspNode<A: Copy> {
+    values: Vec<Polygon<A>>,
+    front: Option<Box<BspNode<A>>>,
+    back: Option<Box<BspNode<A>>>,
 }
 
-impl<T> BspNode<T> {
+impl<A: Copy> BspNode<A> {
     /// Create a new node.
     pub fn new() -> Self {
         BspNode {
@@ -187,10 +179,10 @@ impl<T> BspNode<T> {
     }
 }
 
-impl<T: BspPlane> BspNode<T> {
+impl<A: Copy> BspNode<A> {
     /// Insert a value into the sub-tree starting with this node.
     /// This operation may spawn additional leafs/branches of the tree.
-    pub fn insert(&mut self, value: T) {
+    pub fn insert(&mut self, value: Polygon<A>) {
         if self.values.is_empty() {
             self.values.push(value);
             return;
@@ -207,7 +199,7 @@ impl<T: BspPlane> BspNode<T> {
     /// Build the draw order of this sub-tree into an `out` vector,
     /// so that the contained planes are sorted back to front according
     /// to the view vector defined as the `base` plane front direction.
-    pub fn order(&self, base: &T, out: &mut Vec<T>) {
+    pub fn order(&self, base: &Polygon<A>, out: &mut Vec<Polygon<A>>) {
         let (former, latter) = match self.values.first() {
             None => return,
             Some(ref first) if base.is_aligned(first) => (self.front.as_ref(), self.back.as_ref()),

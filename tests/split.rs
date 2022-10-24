@@ -2,10 +2,11 @@ use euclid::{
     default::{Rect, Transform3D},
     rect, vec3, Angle,
 };
-use plane_split::{make_grid, BspSplitter, Polygon, Splitter};
+use plane_split::PlaneCut;
+use plane_split::{make_grid, BspSplitter, Polygon};
 use std::f64::consts::FRAC_PI_4;
 
-fn grid_impl(count: usize, splitter: &mut dyn Splitter<usize>) {
+fn grid_impl(count: usize, splitter: &mut BspSplitter<usize>) {
     let polys = make_grid(count);
     let result = splitter.solve(&polys, vec3(0.0, 0.0, 1.0));
     assert_eq!(result.len(), count + count * count + count * count * count);
@@ -16,7 +17,7 @@ fn grid_bsp() {
     grid_impl(2, &mut BspSplitter::new());
 }
 
-fn sort_rotation(splitter: &mut dyn Splitter<usize>) {
+fn sort_rotation(splitter: &mut BspSplitter<usize>) {
     let transform0: Transform3D<f64> =
         Transform3D::rotation(0.0, 1.0, 0.0, Angle::radians(-FRAC_PI_4));
     let transform1: Transform3D<f64> = Transform3D::rotation(0.0, 1.0, 0.0, Angle::radians(0.0));
@@ -43,7 +44,7 @@ fn rotation_bsp() {
     sort_rotation(&mut BspSplitter::new());
 }
 
-fn sort_trivial(splitter: &mut dyn Splitter<usize>) {
+fn sort_trivial(splitter: &mut BspSplitter<usize>) {
     let anchors: Vec<_> = (0usize..10).collect();
     let rect: Rect<f64> = rect(-10.0, -10.0, 20.0, 20.0);
     let polys: Vec<_> = anchors
@@ -64,7 +65,7 @@ fn sort_trivial(splitter: &mut dyn Splitter<usize>) {
     assert_eq!(anchors1, anchors2);
 }
 
-fn sort_external(splitter: &mut dyn Splitter<usize>) {
+fn sort_external(splitter: &mut BspSplitter<usize>) {
     let rect0: Rect<f64> = rect(-10.0, -10.0, 20.0, 20.0);
     let poly0 = Polygon::from_rect(rect0, 0);
     let poly1 = {
