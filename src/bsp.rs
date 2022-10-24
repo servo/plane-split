@@ -1,77 +1,8 @@
-use crate::{is_zero, Intersection, Plane, Polygon};
+use crate::{Plane, PlaneCut, Polygon};
 
 use euclid::default::{Point3D, Vector3D};
 
-use std::{fmt, iter};
-
-impl<A> Polygon<A>
-where
-    A: Copy,
-{
-    pub fn cut(&self, mut poly: Self) -> PlaneCut<Self> {
-        //Note: we treat `self` as a plane, and `poly` as a concrete polygon here
-        let (intersection, dist) = match self.plane.intersect(&poly.plane) {
-            None => {
-                let ndot = self.plane.normal.dot(poly.plane.normal);
-                let dist = self.plane.offset - ndot * poly.plane.offset;
-                (Intersection::Coplanar, dist)
-            }
-            Some(_) if self.plane.are_outside(&poly.points[..]) => {
-                //Note: we can't start with `are_outside` because it's subject to FP precision
-                let dist = self.plane.signed_distance_sum_to(&poly);
-                (Intersection::Outside, dist)
-            }
-            Some(line) => {
-                //Note: distance isn't relevant here
-                (Intersection::Inside(line), 0.0)
-            }
-        };
-
-        match intersection {
-            //Note: we deliberately make the comparison wider than just with T::epsilon().
-            // This is done to avoid mistakenly ordering items that should be on the same
-            // plane but end up slightly different due to the floating point precision.
-            Intersection::Coplanar if is_zero(dist) => PlaneCut::Sibling(poly),
-            Intersection::Coplanar | Intersection::Outside => {
-                if dist > 0.0 {
-                    PlaneCut::Cut {
-                        front: vec![poly],
-                        back: vec![],
-                    }
-                } else {
-                    PlaneCut::Cut {
-                        front: vec![],
-                        back: vec![poly],
-                    }
-                }
-            }
-            Intersection::Inside(line) => {
-                let (res_add1, res_add2) = poly.split_with_normal(&line, &self.plane.normal);
-                let mut front = Vec::new();
-                let mut back = Vec::new();
-
-                for sub in iter::once(poly)
-                    .chain(res_add1)
-                    .chain(res_add2)
-                    .filter(|p| !p.is_empty())
-                {
-                    let dist = self.plane.signed_distance_sum_to(&sub);
-                    if dist > 0.0 {
-                        front.push(sub)
-                    } else {
-                        back.push(sub)
-                    }
-                }
-
-                PlaneCut::Cut { front, back }
-            }
-        }
-    }
-
-    pub fn is_aligned(&self, other: &Self) -> bool {
-        self.plane.normal.dot(other.plane.normal) > 0.0
-    }
-}
+use std::fmt;
 
 /// Binary Space Partitioning splitter, uses a BSP tree.
 pub struct BspSplitter<A: Copy> {
@@ -127,24 +58,6 @@ where
         }
         self.sort(view)
     }
-}
-
-/// The result of one plane being cut by another one.
-/// The "cut" here is an attempt to classify a plane as being
-/// in front or in the back of another one.
-#[derive(Debug)]
-pub enum PlaneCut<T> {
-    /// The planes are one the same geometrical plane.
-    Sibling(T),
-    /// Planes are different, thus we can either determine that
-    /// our plane is completely in front/back of another one,
-    /// or split it into these sub-groups.
-    Cut {
-        /// Sub-planes in front of the base plane.
-        front: Vec<T>,
-        /// Sub-planes in the back of the base plane.
-        back: Vec<T>,
-    },
 }
 
 /// Add a list of planes to a particular front/end branch of some root node.

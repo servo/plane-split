@@ -14,7 +14,7 @@ mod bsp;
 mod clip;
 mod polygon;
 
-pub use bsp::PlaneCut;
+pub use polygon::PlaneCut;
 
 use euclid::{
     approxeq::ApproxEq,
