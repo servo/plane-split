@@ -1,6 +1,6 @@
 [package]
 name = "plane-split"
-version = "0.17.1"
+version = "0.18.0"
 description = "Plane splitting"
 authors = ["Dzmitry Malyshau <kvark@mozilla.com>"]
 license = "MPL-2.0"
